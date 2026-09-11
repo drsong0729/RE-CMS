@@ -4928,7 +4928,7 @@ async function openRecruitModal(id,pool){
   const agentWrap = document.getElementById('ec-agent-wrap');
   if(agentWrap) agentWrap.style.display = isComm ? '' : 'none';
   const channelsWrap = document.getElementById('ec-channels-wrap');
-  if(channelsWrap) channelsWrap.style.display = 'none';
+  if(channelsWrap) channelsWrap.style.display = isComm ? '' : 'none';
   const photosWrap = document.getElementById('ec-photos-wrap');
   if(photosWrap) photosWrap.style.display = 'none';
   setListingPhotos([]);
@@ -4985,6 +4985,8 @@ async function openRecruitModal(id,pool){
       const myName = (window._currentUser && (window._currentUser.displayName || window._currentUser.email)) || '';
       const existingAgents = (f.assignedAgents && f.assignedAgents.length) ? f.assignedAgents : (myUid ? [{uid:myUid, name:myName, role:'dev'}] : []);
       await setAgentPickerList('comm', existingAgents);
+      // 上架管道：跟公司委託一樣，有存過資料就用存過的，沒有（此功能上線前或尚未編輯過的舊委託）就用預設全未上架
+      setListingChannelsState(f.listingChannels || null);
     }
   } else {
     addOwnerRow();
@@ -5003,6 +5005,9 @@ async function openRecruitModal(id,pool){
       const myUid = window._currentUser && window._currentUser.uid;
       const myName = (window._currentUser && (window._currentUser.displayName || window._currentUser.email)) || '';
       if(myUid) await setAgentPickerList('comm', [{uid:myUid, name:myName, role:'dev'}]);
+      // 上架管道：新增委託預設全部未上架；若這其實是「新增公司委託」的初始呼叫，
+      // openCompanyListingModal() 隨後也會呼叫 setListingChannelsState(null)，結果一樣，不會衝突
+      setListingChannelsState(null);
     }
   }
   onPropTypeChange();
@@ -5680,7 +5685,8 @@ async function openAdminEditSyncModal(item){
   _adminEditSyncTargetUid = targetUid;
   _adminEditSyncItem = item;
   const channelsWrap = document.getElementById('ec-channels-wrap');
-  if(channelsWrap) channelsWrap.style.display = 'none';
+  if(channelsWrap) channelsWrap.style.display = '';
+  setListingChannelsState(item.listingChannels || null);
   const photosWrap = document.getElementById('ec-photos-wrap');
   if(photosWrap) photosWrap.style.display = 'none';
   const featuresWrap = document.getElementById('ec-features-wrap');
@@ -6312,6 +6318,8 @@ function saveRecruit(){
       data.assignedAgents = agents.map(a=>({...a, ratio: ratioMap[a.uid]}));
       data.assignedAgentUids = agents.map(a=>a.uid);
     }
+    // 上架管道：跟「新增公司委託」一樣一併存進委託資料（_saveCompanyListing() 自己有另外處理，這裡不重複做）
+    data.listingChannels = getListingChannelsState();
   }
   // 新增公司委託模式：不寫入自己的委託清單，改寫入獨立的 company_listings 集合，並指定負責業務
   if(_companyListingMode){
@@ -12389,6 +12397,14 @@ function _warComputeRanks(dateStr){
     }
   });
   const rankOf = vals => {
+    // 這個期間（當月或當年）所有業務的業績都是 0 時，名次固定設為 4，不計算正常排名
+    // （若照正常排名，全部同分會變成並列第一，不合理）；設成 4 之後，前三名才有的獎牌 emoji
+    // 邏輯只認 1/2/3，自然就不會顯示，不需要再另外處理「拿掉獎牌」這件事。
+    if(vals.length && vals.every(v => v.val === 0)){
+      const rankMap = {};
+      vals.forEach(v => { rankMap[v.id] = 4; });
+      return rankMap;
+    }
     const sorted = vals.slice().sort((a,b)=>b.val-a.val);
     const rankMap = {};
     let rank = 0, prevVal = null, seen = 0;
@@ -12404,8 +12420,7 @@ function _warComputeRanks(dateStr){
 // 名次徽章顯示：前三名附上獎牌 emoji，其餘僅顯示數字；沒有名次（當天無快照）顯示 —
 function _warRankBadge(rank){
   if(rank===undefined || rank===null) return '<span style="color:var(--tx3)">—</span>';
-  const medal = rank===1 ? '🥇' : rank===2 ? '🥈' : rank===3 ? '🥉' : '';
-  return `${medal}${rank}`;
+  return `${rank}`;
 }
 
 // 業務排序：依「新增業務」的先後順序，最舊的排最上面、最新的排最下面
