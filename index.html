@@ -5412,7 +5412,7 @@ async function openCompanyListingModal(editItem){
   const isOwner = !!(editItem && myUid && (editItem._agentUids||[]).includes(myUid));
   if(!editItem && !canCreateNew) return;
   if(editItem && !isAdmin && !isOwner) return;
-  openRecruitModal(null, 'commission');
+  await openRecruitModal(null, 'commission');
   _companyListingMode = true;
   _companyListingEditId = editItem ? editItem.id : null;
   // 重建負責業務名單時，優先使用已存的 assignedAgents（含角色／比例），沒有的話（舊資料）才退回用 _agentUids/_agentNames 重建（角色會用預設值）
@@ -15604,6 +15604,16 @@ function _calKey() {
   return uid ? ('re_calendar_data__' + uid) : 're_calendar_data__guest';
 }
 let calData = {};
+// 【嚴重錯誤修正】calLoadFromFirestore() 是非同步、不阻塞主流程的設計（登入後背景載入），
+// 這代表：使用者登入後若在雲端資料讀取完成「之前」就先對行事曆做了異動（例如很快點進規劃時段新增待辦），
+// calSave() 當時手上的 calData 還只是登入前的舊快照（甚至是這裡 calLoad() 用 'guest' 鍵讀到的初始空值），
+// 若這時候就把 calData 整份寫回 Firestore（且沒有加 merge），會直接覆蓋掉雲端原本完整的歷史行程資料，
+// 造成「過去的行程全部消失，只剩下這次新增的」——這就是本次修正的根本原因。
+// 修法：新增 _calFirestoreReady 旗標，calSave() 在確認已經成功從 Firestore 讀取過一次之前，
+// 只更新本機 localStorage 快取，不寫回 Firestore；若在讀取完成前使用者已經做了異動，
+// 讀取完成的當下會偵測到並「補做一次」真正的雲端寫入，確保這次異動不會遺失。
+let _calFirestoreReady = false;
+let _calPendingSaveAfterReady = false;
 
 function calLoad() {
   // 先從 localStorage 快取讀（離線 / 尚未登入）
@@ -15612,20 +15622,33 @@ function calLoad() {
 
 async function calLoadFromFirestore() {
   const user = window._currentUser;
-  if (!user || !window._firebaseCalRef) return;
+  if (!user || !window._firebaseCalRef) { _calFirestoreReady = true; return; }
   try {
     const snap = await window._firebaseGetDoc(window._firebaseCalRef(user.uid));
     if (snap.exists()) {
-      calData = snap.data().calData || {};
+      const cloudCalData = snap.data().calData || {};
+      // 讀取完成前，若使用者已經在本機做過異動（_calPendingSaveAfterReady 已被 calSave() 標記過），
+      // 要把雲端資料當底、疊上使用者剛做的異動（目前記憶體裡的 calData），兩邊都要保留，
+      // 不能只取其中一邊：只取雲端會遺失使用者剛做的異動，只取本機會遺失還沒併入的歷史資料
+      calData = _calPendingSaveAfterReady ? { ...cloudCalData, ...calData } : cloudCalData;
       // 同步更新 localStorage 快取
       try { localStorage.setItem(_calKey(), JSON.stringify(calData)); } catch(e){}
     }
-  } catch(e) { /* 離線時靜默 */ }
+  } catch(e) {
+    return; // 讀取失敗（例如離線）：_calFirestoreReady 維持 false，之後的存檔仍會被擋在只存本機，保守處理，避免用不確定完整的資料覆寫雲端
+  }
+  _calFirestoreReady = true;
+  if (_calPendingSaveAfterReady) {
+    _calPendingSaveAfterReady = false;
+    calSave(); // 補做一次真正的雲端寫入，確保讀取完成前的異動不會遺失
+  }
 }
 
 function calSave() {
-  // localStorage 快取（即時）
+  // localStorage 快取（即時，純本機快取，沒有覆寫遺失雲端資料的風險，不受下方保護限制）
   try { localStorage.setItem(_calKey(), JSON.stringify(calData)); } catch(e){}
+  // 還沒確認已經從 Firestore 完整讀取過一次之前，不寫回 Firestore（見上方說明），只記錄「之後要補寫」
+  if (!_calFirestoreReady) { _calPendingSaveAfterReady = true; return; }
   // Firestore 雲端儲存（非同步背景）
   const user = window._currentUser;
   if (user && window._firebaseCalRef && window._firebaseSetDoc) {
