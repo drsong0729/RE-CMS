@@ -15474,7 +15474,7 @@ function _adminCalRenderDayPanel(){
 
   const dayData = _adminCalData[dateKey] || {slots:{}};
   let html = '';
-  for(const slot of getCalSlots(_adminCalEmail)){
+  for(const slot of getCalSlots(_adminCalEmail, dateKey)){
     const todos = (dayData.slots && dayData.slots[slot.key]) || [];
     const bg = slot.special ? 'background:var(--bg2)' : 'background:var(--surf)';
     const labelColor = slot.special ? 'color:var(--tx3)' : 'color:var(--acc)';
@@ -15713,11 +15713,52 @@ const CAL_SLOTS_OVERRIDE_BY_EMAIL = {
     { key:'1745-1800', label:'17:45 – 18:00', special:true,  specialLabel:'🧹 打掃時間' },
   ]
 };
-// 取得指定使用者（預設為目前登入者）適用的每日行程表時段定義；每日待辦面板、月曆、
+// 【2026-09-12 起生效的新版時段表】2026-09-12（含）之前的日期仍套用上方舊版，這天起套用下方新版
+const CAL_SLOTS_CUTOFF_DATE = '2026-09-12';
+const CAL_SLOTS_DEFAULT_NEW = [
+  { key:'0900-0915', label:'09:00 – 09:15', special:true,  specialLabel:'🧹 打掃' },
+  { key:'0915-1000', label:'09:15 – 10:00', special:true,  specialLabel:'📋 早會' },
+  { key:'1000-1040', label:'10:00 – 10:40', special:false },
+  { key:'1040-1120', label:'10:40 – 11:20', special:false },
+  { key:'1120-12',   label:'11:20 – 12:00', special:false },
+  { key:'12-1345',   label:'12:00 – 13:45', special:true,  specialLabel:'🍱 午休時間' },
+  { key:'1345-14',   label:'13:45 – 14:00', special:true,  specialLabel:'📣 返回公司' },
+  { key:'14-1440',   label:'14:00 – 14:40', special:false },
+  { key:'1440-1520', label:'14:40 – 15:20', special:false },
+  { key:'1520-16',   label:'15:20 – 16:00', special:false },
+  { key:'16-1640',   label:'16:00 – 16:40', special:false },
+  { key:'1640-1720', label:'16:40 – 17:20', special:false },
+  { key:'1720-1745', label:'17:20 – 17:45', special:true,  specialLabel:'🌆 晚會' },
+  { key:'1745-1800', label:'17:45 – 18:00', special:true,  specialLabel:'🧹 打掃時間' },
+];
+// 新版時段表下，a0931177561 仍維持自己的午休時段個別調整（12:00–13:00／13:00–14:00），其餘時段跟新版預設同步
+const CAL_SLOTS_OVERRIDE_BY_EMAIL_NEW = {
+  'a0931177561@gmail.com': [
+    { key:'0900-0915', label:'09:00 – 09:15', special:true,  specialLabel:'🧹 打掃' },
+    { key:'0915-1000', label:'09:15 – 10:00', special:true,  specialLabel:'📋 早會' },
+    { key:'1000-1040', label:'10:00 – 10:40', special:false },
+    { key:'1040-1120', label:'10:40 – 11:20', special:false },
+    { key:'1120-12',   label:'11:20 – 12:00', special:false },
+    { key:'12-13',     label:'12:00 – 13:00', special:false },
+    { key:'13-14',     label:'13:00 – 14:00', special:true,  specialLabel:'🍱 午休時間' },
+    { key:'14-1440',   label:'14:00 – 14:40', special:false },
+    { key:'1440-1520', label:'14:40 – 15:20', special:false },
+    { key:'1520-16',   label:'15:20 – 16:00', special:false },
+    { key:'16-1640',   label:'16:00 – 16:40', special:false },
+    { key:'1640-1720', label:'16:40 – 17:20', special:false },
+    { key:'1720-1745', label:'17:20 – 17:45', special:true,  specialLabel:'🌆 晚會' },
+    { key:'1745-1800', label:'17:45 – 18:00', special:true,  specialLabel:'🧹 打掃時間' },
+  ]
+};
+// 取得指定使用者（預設為目前登入者）、指定日期（預設為今天）適用的每日行程表時段定義；每日待辦面板、月曆、
 // 規劃待辦視窗、主管檢視員工行事曆、列印／輸出週報表皆透過此函式取得，確保全部同步套用
-function getCalSlots(email){
+function getCalSlots(email, dateStr){
   const e = (email || (window._currentUser && window._currentUser.email) || '').toLowerCase();
-  return CAL_SLOTS_OVERRIDE_BY_EMAIL[e] || CAL_SLOTS_DEFAULT;
+  const d = dateStr || nowDate();
+  const useNew = d >= CAL_SLOTS_CUTOFF_DATE;
+  return useNew
+    ? (CAL_SLOTS_OVERRIDE_BY_EMAIL_NEW[e] || CAL_SLOTS_DEFAULT_NEW)
+    : (CAL_SLOTS_OVERRIDE_BY_EMAIL[e] || CAL_SLOTS_DEFAULT);
 }
 
 // ─── 首頁行事曆結合「每月出勤排休表」假別（休／事／特／病）───────────────
@@ -15951,7 +15992,7 @@ function renderTodayPanel() {
   if (dutyBadge) {
     html += `<div style="padding:6px 16px;background:${dutyBadge.bg};border-bottom:1px solid var(--bdr);font-size:12px;font-weight:700;color:${dutyBadge.color}">🗓️ ${dutyBadge.label}</div>`;
   }
-  for (const slot of getCalSlots()) {
+  for (const slot of getCalSlots(undefined, _todayPanelDate)) {
     const todos = (dayData.slots && dayData.slots[slot.key]) || [];
     const bg = slot.special ? 'background:var(--bg2)' : 'background:var(--surf)';
     const labelColor = slot.special ? 'color:var(--tx3)' : 'color:var(--acc)';
@@ -16076,7 +16117,7 @@ function renderScheduleBody() {
   const dayData = calData[_scheduleDate] || { slots: {} };
   let html = '<div style="padding:0 0 8px">';
 
-  for (const slot of getCalSlots()) {
+  for (const slot of getCalSlots(undefined, _scheduleDate)) {
     const todos = (dayData.slots && dayData.slots[slot.key]) || [];
     const bg = slot.special ? 'background:var(--bg2)' : 'background:var(--surf)';
     const labelColor = slot.special ? 'color:var(--tx3)' : 'color:var(--acc)';
@@ -16146,7 +16187,7 @@ let _todoSlotKey = '';
 
 function openTodoModal(slotKey) {
   _todoSlotKey = slotKey;
-  const slot = getCalSlots().find(s => s.key === slotKey);
+  const slot = getCalSlots(undefined, _scheduleDate).find(s => s.key === slotKey);
   document.getElementById('todo-modal-title').textContent = '✏️ 規劃時段';
   document.getElementById('todo-time-label').textContent = '⏰ ' + slot.label + (slot.special ? '　' + slot.specialLabel : '');
 
@@ -16425,9 +16466,11 @@ function printWeekReport() {
   }).join('');
 
   // ── tbody：時段做列、星期做欄 ──
+  // 新舊時段表的時段數量不同（12 筆 vs 14 筆），若這週橫跨 2026-09-12 交界，表格仍需要固定一套列結構，
+  // 以這週的起始日 fromStr 判斷整份表格要用新版還是舊版（多數情況下這週會完整落在交界的同一側）
   let rows = '';
   let rowIdx = 0; // 用於奇偶交替（僅計一般時段）
-  for (const slot of getCalSlots()) {
+  for (const slot of getCalSlots(undefined, fromStr)) {
     if (slot.special) {
       const lbl = slot.label.replace(' – ','~').replace(/:00/g,'');
       const txt = slot.specialLabel.replace(/[\u{1F300}-\u{1FFFF}]/gu,'').trim();
@@ -16576,9 +16619,10 @@ function exportWeekReportPDF() {
     return `<th class="${cls}">${colLabels[i]}${dateStr}</th>`;
   }).join('');
 
+  // 理由同 printWeekReport()：以這週的起始日 fromStr 判斷整份表格要用新版還是舊版時段表
   let rows = '';
   let rowIdx = 0;
-  for (const slot of getCalSlots()) {
+  for (const slot of getCalSlots(undefined, fromStr)) {
     if (slot.special) {
       const lbl = slot.label.replace(' – ','~').replace(/:00/g,'');
       const txt = slot.specialLabel.replace(/[\u{1F300}-\u{1FFFF}]/gu,'').trim();
