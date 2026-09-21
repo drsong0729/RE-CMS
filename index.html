@@ -154,7 +154,17 @@
   window._firebaseGoalsRef = (uid) => doc(db_fs, 'users', uid, 'data', 'goals');
   window._firebaseCalRef   = (uid) => doc(db_fs, 'users', uid, 'data', 'calendar');
   window._firebaseGetDoc = getDoc;
-  window._firebaseSetDoc = setDoc;
+  // 唯讀帳號（ROLES.VIEWER）攔截：整個系統所有的新增／編輯／刪除，最終都是透過這兩個函式寫入 Firestore
+  // （沒有任何地方直接呼叫 addDoc/updateDoc/writeBatch），所以在這裡集中攔截一次，
+  // 就能涵蓋全站每一個頁面、每一個彈出視窗的寫入動作，不需要逐一去改每個「新增/編輯/刪除」按鈕。
+  // Firestore 安全規則那邊也會擋（避免有人繞過前端直接呼叫），這裡是給使用者立即、友善的提示。
+  window._firebaseSetDoc = (...args) => {
+    if(window._myRole === ROLES.VIEWER){
+      alert('🔒 此帳號為唯讀權限，僅能瀏覽，無法新增或編輯任何資料');
+      return Promise.reject(new Error('唯讀帳號無法寫入資料'));
+    }
+    return setDoc(...args);
+  };
   // 主管：公共索引（每位員工的摘要）
   window._firebaseIndexRef = (uid) => doc(db_fs, 'users_index', uid);
   window._firebaseIndexColl = () => collection(db_fs, 'users_index');
@@ -172,7 +182,13 @@
   // 實價登錄行情比對：market_comps/{縣市}_{行政區}，由後端排程 Cloud Function 寫入，前端僅讀取
   window._firebaseMarketRef = (docId) => doc(db_fs, 'market_comps', docId);
   window._firebaseGetDocs = getDocs;
-  window._firebaseDeleteDoc = deleteDoc;
+  window._firebaseDeleteDoc = (...args) => {
+    if(window._myRole === ROLES.VIEWER){
+      alert('🔒 此帳號為唯讀權限，僅能瀏覽，無法刪除任何資料');
+      return Promise.reject(new Error('唯讀帳號無法刪除資料'));
+    }
+    return deleteDoc(...args);
+  };
   // 存取控管：白名單與待審核註冊申請
   window._firebaseAllowedRef  = (uid) => doc(db_fs, 'allowed_users', uid);
   window._firebaseAllowedColl = () => collection(db_fs, 'allowed_users');
@@ -4112,7 +4128,8 @@ const ROLES = {
   SUPERVISOR: 'supervisor', // 主管
   ADVISOR:    'advisor',    // 幕僚（基本功能 + 每日戰報編輯）
   SECRETARY:  'secretary',  // 店秘書（權限目前與幕僚相同，其他權限日後再調整）
-  STAFF:      'staff'       // 員工（預設）
+  STAFF:      'staff',      // 員工（預設）
+  VIEWER:     'viewer'      // 唯讀：可瀏覽主管／系統管理員／幕僚／店秘書／員工能看到的所有頁面與彈出視窗，但無法新增／編輯／刪除任何資料
 };
 // 硬編碼：系統管理員與老闆（不可被任何人更動）
 const FIXED_ROLES = {
@@ -4131,7 +4148,8 @@ const ROLE_LABELS = {
   supervisor: '主管',
   advisor:    '幕僚',
   secretary:  '店秘書',
-  staff:      '員工'
+  staff:      '員工',
+  viewer:     '唯讀帳號'
 };
 // 身份組顯示顏色
 const ROLE_COLORS = {
@@ -4140,7 +4158,8 @@ const ROLE_COLORS = {
   supervisor: '#0f519b',
   advisor:    '#0d9488',
   secretary:  '#b45309',
-  staff:      '#6b7280'
+  staff:      '#6b7280',
+  viewer:     '#475569'
 };
 // 本登入者的角色（登入後由 onFirebaseLogin 或 Firestore 設定）
 window._myRole = ROLES.STAFF;
@@ -4167,11 +4186,11 @@ function canPostAnnouncement(){
 }
 // 可檢視／編輯「員工總表」（工具選單）：店秘書專屬新頁面，系統管理員亦可檢視作為後盾
 function canViewStaffDirectory(){
-  return window._myRole === ROLES.SECRETARY || window._myRole === ROLES.SYSADMIN;
+  return window._myRole === ROLES.SECRETARY || window._myRole === ROLES.SYSADMIN || window._myRole === ROLES.VIEWER;
 }
 // 可檢視／編輯「契據領用」（工具選單）：店秘書與幕僚皆可使用，系統管理員亦可檢視作為後盾
 function canViewDeedReceipts(){
-  return window._myRole === ROLES.SECRETARY || window._myRole === ROLES.ADVISOR || window._myRole === ROLES.SYSADMIN;
+  return window._myRole === ROLES.SECRETARY || window._myRole === ROLES.ADVISOR || window._myRole === ROLES.SYSADMIN || window._myRole === ROLES.VIEWER;
 }
 // 特定一則公告是否可被目前登入者編輯／刪除：僅發布者本人，系統管理員例外（可編輯／刪除任何人的公告）
 function canEditThisAnnouncement(a){
@@ -9839,7 +9858,7 @@ window.onFirebaseLogin = async function(user){
     if(dName) dName.textContent = user.displayName || '使用者';
   }
 
-  window._isSupervisor = SUPERVISOR_ROLES.includes(window._myRole);
+  window._isSupervisor = SUPERVISOR_ROLES.includes(window._myRole) || window._myRole === ROLES.VIEWER;
 
   // 「員工總表」導覽按鈕：僅店秘書／系統管理員可見（電腦版側邊欄 + 手機版底部工具選單皆需切換）
   const sdNav = document.getElementById('dnav-staffdirectory');
@@ -11879,7 +11898,10 @@ function _initAdminNav(){
 
 // 切換面板顯示
 function _showAdminPanel(){
-  const isSys = window._myRole === ROLES.SYSADMIN;
+  // 唯讀帳號（VIEWER）視為要看到系統管理員後台（範圍較完整，含待審核申請、白名單），
+  // 但這只影響「顯示哪個面板」，不影響任何實際寫入權限（那些各自的按鈕即使顯示，
+  // 實際點下去仍會被集中攔截在 window._firebaseSetDoc / _firebaseDeleteDoc 那一層擋下）
+  const isSys = window._myRole === ROLES.SYSADMIN || window._myRole === ROLES.VIEWER;
   const sysEl = document.getElementById('sysadmin-panel');
   const supEl = document.getElementById('supervisor-panel');
   if(sysEl) sysEl.style.display = isSys ? '' : 'none';
@@ -11890,7 +11912,7 @@ function _showAdminPanel(){
 async function loadAdminData(){
   if(!window._isSupervisor) return;
   _showAdminPanel();
-  const isSys = window._myRole === ROLES.SYSADMIN;
+  const isSys = window._myRole === ROLES.SYSADMIN || window._myRole === ROLES.VIEWER;
   const updEl = document.getElementById(isSys ? 'sysadmin-updated' : 'admin-updated');
   if(updEl) updEl.textContent = '載入中…';
   try{
@@ -11922,7 +11944,7 @@ let _pendingMap = {};
 async function renderPendingRegistrations(){
   const wrap = document.getElementById('reg-review-list');
   if(!wrap) return;
-  if(window._myRole !== ROLES.SYSADMIN){ wrap.innerHTML=''; return; }
+  if(window._myRole !== ROLES.SYSADMIN && window._myRole !== ROLES.VIEWER){ wrap.innerHTML=''; return; }
   wrap.innerHTML = '<div style="color:var(--tx3);font-size:12px;padding:10px;text-align:center">載入中…</div>';
   try{
     const snap = await window._firebaseGetDocs(window._firebasePendingColl());
@@ -12006,7 +12028,7 @@ let _allowedMap = {};
 async function renderWhitelist(){
   const wrap = document.getElementById('whitelist-list');
   if(!wrap) return;
-  if(window._myRole !== ROLES.SYSADMIN){ wrap.innerHTML=''; return; }
+  if(window._myRole !== ROLES.SYSADMIN && window._myRole !== ROLES.VIEWER){ wrap.innerHTML=''; return; }
   wrap.innerHTML = '<div style="color:var(--tx3);font-size:12px;padding:10px;text-align:center">載入中…</div>';
   try{
     const snap = await window._firebaseGetDocs(window._firebaseAllowedColl());
@@ -12185,6 +12207,7 @@ function renderSysadminTable(){
           <option value="advisor"${empRole==='advisor'?' selected':''}>幕僚</option>
           <option value="secretary"${empRole==='secretary'?' selected':''}>店秘書</option>
           <option value="staff"${empRole==='staff'?' selected':''}>員工</option>
+          <option value="viewer"${empRole==='viewer'?' selected':''}>唯讀帳號</option>
         </select>
         <button class="role-save-btn" style="margin-top:3px" onclick="saveSysRole('${u.uid}')">更新身份組</button>
         <button style="font-size:11px;padding:4px 10px;border:1px solid var(--red);border-radius:6px;background:transparent;color:var(--red);cursor:pointer;font-family:inherit;white-space:nowrap;margin-top:4px;display:block" onclick="removeEmployeeFromSystem('${u.uid}')">🚫 移除該員工</button>`:''}
@@ -16951,8 +16974,8 @@ function mbnSyncBadges(){
     const label = document.getElementById('mbn-tools-admin-label');
     if(!btn) return;
     const role = window._myRole || '';
-    // 只有 sysadmin / owner / supervisor 才能看到後台按鈕
-    const canSeeAdmin = role === 'sysadmin' || role === 'owner' || role === 'supervisor';
+    // 只有 sysadmin / owner / supervisor / viewer(唯讀，可瀏覽所有頁面) 才能看到後台按鈕
+    const canSeeAdmin = role === 'sysadmin' || role === 'owner' || role === 'supervisor' || role === 'viewer';
     btn.style.display = canSeeAdmin ? '' : 'none';
     if(!canSeeAdmin) return;
     if(role === 'sysadmin'){
