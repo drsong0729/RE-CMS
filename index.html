@@ -5648,7 +5648,8 @@ async function deleteCompanyListing(item){
   try{
     if(isSync){
       // 業務自己在委託頁面建立、自動同步進來的委託：從該業務本人的個人委託清單移除這一筆
-      const targetUid = item._agentUid;
+      // 【修正】用 _ownerUid（資料實際存放的帳號）而非 _agentUid（負責業務清單第一位，可能是別人）
+      const targetUid = item._ownerUid || item._agentUid;
       if(!targetUid){ alert('⚠️ 找不到這筆委託的所屬業務'); return; }
       const ref = window._firebaseDocRef(targetUid);
       const snap = await window._firebaseGetDoc(ref);
@@ -5698,7 +5699,9 @@ let _adminEditSyncItem = null;      // 目前正在編輯的委託原始資料�
 async function openAdminEditSyncModal(item){
   if(!canManageAnyCompanyListing()) return; // 僅幕僚／店秘書／主管／系統管理員可用
   if(!item || item._src !== 'sync') return;
-  const targetUid = item._agentUid;
+  // 【修正】用 _ownerUid（資料實際存放的帳號）而非 _agentUid（負責業務清單第一位，可能是別人，
+  // 例如透過追蹤線轉委託指定了別人當開發業務）——用錯會去讀別人的個人資料文件，找不到這筆資料而出錯
+  const targetUid = item._ownerUid || item._agentUid;
   if(!targetUid){ alert('⚠️ 找不到這筆委託的所屬業務'); return; }
   await openRecruitModal(null, 'commission'); // 沿用共用彈窗（內部會重置 _companyListingMode／_adminEditSyncTargetUid 等狀態，須在此之後才設定本次的值）
   _adminEditSyncTargetUid = targetUid;
@@ -6230,7 +6233,9 @@ async function confirmCompanyDeal(){
     // 「新增公司委託」建立的（_src==='listing'）直接刪掉 company_listings 文件；
     // 業務自己在委託頁面建立、自動同步進來的（_src==='sync'）則是從該業務本人的個人委託清單移除這一筆
     if(item._src === 'sync'){
-      const targetUid = item._agentUid;
+      // 【修正】用 _ownerUid（資料實際存放的帳號）而非 _agentUid，否則會去改到別人的委託清單，
+      // 原本這筆委託在真正本人的資料裡完全沒被移除，公司庫存會一直卡著這筆「已標記成交」的委託
+      const targetUid = item._ownerUid || item._agentUid;
       if(targetUid){
         const ref2 = window._firebaseDocRef(targetUid);
         const snap = await window._firebaseGetDoc(ref2);
@@ -10990,7 +10995,12 @@ async function loadInventoryFromFirestore(){
         // 個人自動同步的委託，若本身也有多負責業務資料（透過追蹤線轉委託指定），優先使用；否則預設僅本人一位
         const uids = (item.assignedAgentUids && item.assignedAgentUids.length) ? item.assignedAgentUids : [d.uid];
         const names = (item.assignedAgents && item.assignedAgents.length) ? item.assignedAgents.map(a=>a.name) : [agentName];
-        all.push({...item, _agentUid:uids[0], _agentName:names[0]||agentName, _agentUids:uids, _agentNames:names, _updatedAt:d.updatedAt||'', _src:'sync'});
+        // 【修正】_ownerUid：這筆委託實際存放的個人資料文件（users/{uid}/data/main）所屬帳號，一律是這份
+        // company_inventory 快照文件本身的 uid（d.uid）——不論「負責業務」清單第一位（_agentUid，可能因
+        // 追蹤線轉委託指定其他人為開發業務）是誰。幕僚代編輯／刪除／標記成交 sync 類型委託時，必須用
+        // _ownerUid 去讀寫正確的人的個人資料文件，用 _agentUid 會讀到別人的文件、找不到這筆資料而出錯
+        // （或更隱蔽地，寫回錯的人身上、原本那筆資料完全沒被處理到）。_agentUid／_agentName 僅供畫面顯示用。
+        all.push({...item, _ownerUid:d.uid, _agentUid:uids[0], _agentName:names[0]||agentName, _agentUids:uids, _agentNames:names, _updatedAt:d.updatedAt||'', _src:'sync'});
       });
     });
     // 併入「新增公司委託」的資料（幕僚／店秘書代為登記、指定負責業務歸類，不算在該業務自己上傳的委託清單內）
