@@ -2686,7 +2686,7 @@ render();
           <th>今日追蹤</th>
           <th>今日募集</th>
           <th>今日電話</th>
-          <th>今日進案</th>
+          <th>今日成果</th>
           <th id="war-th-actions" style="display:none">操作</th>
         </tr>
       </thead>
@@ -2716,8 +2716,23 @@ render();
       <input class="fc" type="number" id="ws-call" placeholder="0">
     </div>
     <div style="border-top:1px dashed var(--bdr);margin:4px 0 0;padding-top:12px">
-      <div style="font-size:12px;font-weight:700;color:var(--tx2);margin-bottom:8px">今日進案（選填，可新增多筆；僅顯示於每日戰報，不會建立到委託管理）</div>
+      <div style="font-size:12px;font-weight:700;color:var(--tx2);margin-bottom:8px">今日成果（選填，可新增多筆；僅顯示於每日戰報，不會建立到委託管理）</div>
       <div id="ws-case-list" style="margin-bottom:4px"></div>
+      <div class="fgp">
+        <label class="lbl">成果類型</label>
+        <select class="fc" id="ws-outcome" onchange="onWarOutcomeChange('ws')">
+          <option value="">請選擇成果類型…</option>
+          <option value="change">改契變</option>
+          <option value="commission">接委託</option>
+          <option value="offer">收斡</option>
+          <option value="sign">簽約</option>
+        </select>
+      </div>
+      <div class="fgp" id="ws-outcome-detail-wrap" style="display:none">
+        <label class="lbl">細項內容</label>
+        <input class="fc" id="ws-outcome-detail" placeholder="">
+      </div>
+      <div id="ws-case-form" style="display:none">
       <div class="fgp">
         <label class="lbl">買賣／租賃</label>
         <div style="display:flex;gap:14px">
@@ -2747,7 +2762,8 @@ render();
         <div id="ws-extrafees-list"></div>
         <button type="button" class="btn btn-g" style="margin-top:6px;font-size:12px;padding:5px 10px" onclick="addExtraFeeRow('ws')">＋ 新增費用</button>
       </div>
-      <button type="button" class="btn btn-g" style="margin-top:10px;width:100%;font-size:13px" onclick="_warAddCaseToList('ws')">＋ 新增這筆進案到清單</button>
+      </div>
+      <button type="button" class="btn btn-g" id="ws-case-add-btn" style="display:none;margin-top:10px;width:100%;font-size:13px" onclick="_warAddCaseToList('ws')">＋ 新增這筆成果到清單</button>
     </div>
   </div>
   <div class="mf">
@@ -2823,8 +2839,23 @@ render();
       </div>
     </div>
     <div style="border-top:1px dashed var(--bdr);margin:4px 0 0;padding-top:12px">
-      <div style="font-size:12px;font-weight:700;color:var(--tx2);margin-bottom:8px">今日進案（選填，可新增多筆，對應上方選擇的日期；僅顯示於每日戰報，不會建立到委託管理）</div>
+      <div style="font-size:12px;font-weight:700;color:var(--tx2);margin-bottom:8px">今日成果（選填，可新增多筆，對應上方選擇的日期；僅顯示於每日戰報，不會建立到委託管理）</div>
       <div id="wp-case-list" style="margin-bottom:4px"></div>
+      <div class="fgp">
+        <label class="lbl">成果類型</label>
+        <select class="fc" id="wp-outcome" onchange="onWarOutcomeChange('wp')">
+          <option value="">請選擇成果類型…</option>
+          <option value="change">改契變</option>
+          <option value="commission">接委託</option>
+          <option value="offer">收斡</option>
+          <option value="sign">簽約</option>
+        </select>
+      </div>
+      <div class="fgp" id="wp-outcome-detail-wrap" style="display:none">
+        <label class="lbl">細項內容</label>
+        <input class="fc" id="wp-outcome-detail" placeholder="">
+      </div>
+      <div id="wp-case-form" style="display:none">
       <div class="fgp">
         <label class="lbl">買賣／租賃</label>
         <div style="display:flex;gap:14px">
@@ -2854,7 +2885,8 @@ render();
         <div id="wp-extrafees-list"></div>
         <button type="button" class="btn btn-g" style="margin-top:6px;font-size:12px;padding:5px 10px" onclick="addExtraFeeRow('wp')">＋ 新增費用</button>
       </div>
-      <button type="button" class="btn btn-g" style="margin-top:10px;width:100%;font-size:13px" onclick="_warAddCaseToList('wp')">＋ 新增這筆進案到清單</button>
+      </div>
+      <button type="button" class="btn btn-g" id="wp-case-add-btn" style="display:none;margin-top:10px;width:100%;font-size:13px" onclick="_warAddCaseToList('wp')">＋ 新增這筆成果到清單</button>
     </div>
   </div>
   <div class="mf" style="justify-content:space-between">
@@ -12808,23 +12840,63 @@ async function renderWarReport(){
   tbody.innerHTML = rowsHtml + totalRowHtml;
 }
 
-// 「今日進案」欄位的顯示內容：todayNewCase 可能是陣列（可新增多筆，新版）或單一物件／null（舊資料，向下相容），
-// 一律先正規化為陣列處理；完全沒有任何有效進案（缺暫定案名）時顯示 —，有多筆則逐筆疊加顯示
+// 「今日成果」類型：改契變／接委託／收斡／簽約。
+// 資料存在快照的 todayNewCase 欄位（沿用舊欄位名稱，避免 Firestore 規則與既有資料要跟著改）。
+// 每筆多一個 outcome 欄位：'change'｜'commission'｜'offer'｜'sign'；舊資料沒有 outcome，一律視為「接委託」（原本的進案格式）。
+//   接委託：沿用原本格式 { dealType, type, caseName, askPrice, floorPrice, offerPrice, feePct, extraFees }
+//   其餘三種：{ outcome, detail }（detail 為使用者輸入的細項文字）
+const WAR_OUTCOMES = {
+  change:     { label:'改契變', color:'#1a5fc8',   bg:'var(--blul)', placeholder:'例如：OO大樓 王先生，調降底價至1,200萬' },
+  commission: { label:'接委託', color:'var(--acc)', bg:'var(--accl)' },
+  offer:      { label:'收斡',   color:'#c05621',   bg:'var(--orgl)', placeholder:'例如：OO大樓 王先生，斡旋價1,180萬' },
+  sign:       { label:'簽約',   color:'var(--grn)', bg:'var(--grnl)', placeholder:'例如：OO大樓 王先生，成交價1,150萬' }
+};
+function _warOutcomeOf(x){ return (x && WAR_OUTCOMES[x.outcome]) ? x.outcome : 'commission'; }
+
+// 「今日成果」欄位的顯示內容：todayNewCase 可能是陣列（可新增多筆，新版）或單一物件／null（舊資料，向下相容），
+// 一律先正規化為陣列處理；完全沒有任何有效成果（接委託缺暫定案名／其他類型缺細項內容）時顯示 —，有多筆則逐筆疊加顯示
 function _warCaseCellHtml(c){
-  const list = (Array.isArray(c) ? c : (c ? [c] : [])).filter(x => x && x.caseName);
+  const list = (Array.isArray(c) ? c : (c ? [c] : [])).filter(x => {
+    if(!x) return false;
+    return _warOutcomeOf(x) === 'commission' ? !!x.caseName : !!(x.detail && String(x.detail).trim());
+  });
   if(!list.length) return '<span style="color:var(--tx3)">—</span>';
   return list.map((x,i)=>{
+    const oc = _warOutcomeOf(x);
+    const o = WAR_OUTCOMES[oc];
+    const sep = i>0 ? 'margin-top:6px;padding-top:6px;border-top:1px dashed var(--bdr2)' : '';
+    const badge = `<span style="font-size:10px;font-weight:700;color:${o.color};background:${o.bg};padding:0 5px;border-radius:4px;margin-right:4px">${o.label}</span>`;
+    if(oc !== 'commission'){
+      return `<div style="${sep}">
+      <div style="font-weight:700;white-space:normal;word-break:break-all;min-width:120px">${badge}${escH(x.detail)}</div>
+    </div>`;
+    }
     const isRental = x.dealType === DEAL_KIND.RENTAL;
     const typeLabel = isRental ? '租賃' : (x.type === 'exclusive' ? '專任' : '一般');
     const typeColor = isRental ? 'var(--grn)' : (x.type === 'exclusive' ? 'var(--acc)' : 'var(--tx2)');
     const detail = isRental
       ? `月租${fmtWarNum(x.askPrice)}／底${fmtWarNum(x.floorPrice)}／服務費${fmtWarNum(x.feePct)}(月)`
       : `開${fmtWarNum(x.askPrice)}／底${fmtWarNum(x.floorPrice)}／斡${fmtWarNum(x.offerPrice)}／服務費${fmtWarNum(x.feePct)}%`;
-    return `<div style="${i>0?'margin-top:6px;padding-top:6px;border-top:1px dashed var(--bdr2)':''}">
-      <div style="font-weight:700">${escH(x.caseName)} <span style="font-size:10px;font-weight:700;color:${typeColor};background:var(--accl);padding:0 5px;border-radius:4px">${typeLabel}</span></div>
+    return `<div style="${sep}">
+      <div style="font-weight:700">${badge}${escH(x.caseName)} <span style="font-size:10px;font-weight:700;color:${typeColor};background:var(--accl);padding:0 5px;border-radius:4px">${typeLabel}</span></div>
       <div style="color:var(--tx3);white-space:nowrap">${detail}</div>
     </div>`;
   }).join('');
+}
+// 成果類型下拉選單切換：改契變／收斡／簽約 → 顯示一個文字輸入欄位填細項；接委託 → 顯示原本的進案表單；未選 → 都隱藏
+// （今日成果：ov-warself 的 ws- 前綴、ov-warperson 的 wp- 前綴共用同一套）
+function onWarOutcomeChange(prefix){
+  const sel = document.getElementById(prefix+'-outcome');
+  const v = sel ? sel.value : '';
+  const detailWrap = document.getElementById(prefix+'-outcome-detail-wrap');
+  const detailInp  = document.getElementById(prefix+'-outcome-detail');
+  const formWrap   = document.getElementById(prefix+'-case-form');
+  const addBtn     = document.getElementById(prefix+'-case-add-btn');
+  const isText = !!v && v !== 'commission';
+  if(detailWrap) detailWrap.style.display = isText ? '' : 'none';
+  if(formWrap)   formWrap.style.display   = v === 'commission' ? '' : 'none';
+  if(addBtn)     addBtn.style.display     = v ? '' : 'none';
+  if(detailInp && isText) detailInp.placeholder = WAR_OUTCOMES[v].placeholder || '';
 }
 // 買賣／租賃切換（今日進案：ov-warself 的 ws- 前綴、ov-warperson 的 wp- 前綴共用同一套規則）
 function onCaseDealKindChange(prefix){
@@ -13173,7 +13245,18 @@ async function recalcAllMonthlyStats(){
 // ── 一般使用者：自行填寫「自己」的今日追蹤／募集／電話數 ──────────────
 // 僅能寫入 todayTrack/todayRecruit/todayCall（+ date/personId/savedAt/savedBy），
 // 且只限本人 linkedUid 綁定的業務資料，其餘欄位與其他人的資料一律無法異動（由 Firestore 規則強制把關）。
-// 讀取「今日進案」表單欄位；未填暫定案名則視為當天沒有進案（回傳 null，儲存時會清除既有的進案資料）
+// 讀取「今日成果」表單欄位（依下拉選單選的成果類型）：
+//   接委託 → 原本的進案表單（未填暫定案名視為沒有）；改契變／收斡／簽約 → 細項文字（未填視為沒有）；未選類型 → null
+function _warReadOutcomeForm(prefix){
+  const sel = document.getElementById(prefix+'-outcome');
+  const v = sel ? sel.value : '';
+  if(!v || !WAR_OUTCOMES[v]) return null;
+  if(v === 'commission') return _warReadCaseForm(prefix);
+  const detail = (document.getElementById(prefix+'-outcome-detail')?.value || '').trim();
+  if(!detail) return null;
+  return { outcome: v, detail };
+}
+// 讀取「接委託」（原本的今日進案）表單欄位；未填暫定案名則回傳 null
 function _warReadCaseForm(prefix){
   const nameEl = document.getElementById(prefix+'-case-name');
   const name = (nameEl?.value || '').trim();
@@ -13184,6 +13267,7 @@ function _warReadCaseForm(prefix){
   const dealType = dealEl ? dealEl.value : DEAL_KIND.SALE;
   const isRental = dealType === DEAL_KIND.RENTAL;
   return {
+    outcome: 'commission',
     dealType,
     type: isRental ? '' : (typeEl ? typeEl.value : 'general'),
     caseName: name,
@@ -13210,6 +13294,12 @@ function _warFillCaseForm(prefix, c){
   if(dealRadio) dealRadio.checked = true;
   fillExtraFees(prefix, c?.extraFees || []);
   onCaseDealKindChange(prefix);
+  // 成果類型下拉選單與細項文字欄位一併重設（c 為 null＝清空回「請選擇成果類型」）
+  const outSel = document.getElementById(prefix+'-outcome');
+  if(outSel) outSel.value = c ? _warOutcomeOf(c) : '';
+  const outDetail = document.getElementById(prefix+'-outcome-detail');
+  if(outDetail) outDetail.value = c?.detail ?? '';
+  onWarOutcomeChange(prefix);
 }
 
 // ── 今日進案：可新增多筆（陣列儲存）──────────────────────────
@@ -13219,8 +13309,12 @@ function _warFillCaseForm(prefix, c){
 window._warCaseList = { ws: [], wp: [] };
 
 function _warAddCaseToList(prefix){
-  const c = _warReadCaseForm(prefix);
-  if(!c){ alert('請先填寫暫定案名，才能加入清單'); return; }
+  const c = _warReadOutcomeForm(prefix);
+  if(!c){
+    const v = (document.getElementById(prefix+'-outcome')||{}).value || '';
+    alert(!v ? '請先選擇成果類型' : (v === 'commission' ? '請先填寫暫定案名，才能加入清單' : '請先填寫細項內容，才能加入清單'));
+    return;
+  }
   if(!window._warCaseList[prefix]) window._warCaseList[prefix] = [];
   window._warCaseList[prefix].push(c);
   _warFillCaseForm(prefix, null); // 清空輸入區，準備新增下一筆
@@ -13251,7 +13345,7 @@ function _warFillCaseList(prefix, cases){
 // 儲存時讀取：清單中已加入的筆數，加上輸入區目前尚未點「加入」但已填寫暫定案名的那一筆（若有），一併存檔
 function _warReadCaseList(prefix){
   const list = (window._warCaseList[prefix] || []).slice();
-  const pending = _warReadCaseForm(prefix);
+  const pending = _warReadOutcomeForm(prefix);
   if(pending) list.push(pending);
   return list;
 }
