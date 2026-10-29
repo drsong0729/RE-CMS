@@ -3083,14 +3083,15 @@ render();
     #page-salesplan .sp-comp .sp-photo{width:90px;height:90px}
     #page-salesplan .sp-comp .sp-g{flex:1;min-width:240px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
     #page-salesplan .sp-comp .fc{padding:6px 8px;font-size:12px}
-    #page-salesplan .sp-poi{display:grid;grid-template-columns:70px 1.6fr .8fr .8fr .8fr 30px;gap:6px;align-items:center;margin-bottom:6px;font-size:12px}
+    #page-salesplan .sp-poi{display:grid;grid-template-columns:96px 1.6fr .8fr .8fr .8fr 30px;gap:6px;align-items:center;margin-bottom:6px;font-size:12px}
     #page-salesplan .sp-poi .fc{padding:5px 7px;font-size:12px}
     #page-salesplan .sp-poi-hd{font-weight:700;color:var(--tx3);font-size:11px}
+    #page-salesplan .sp-poi-n{flex:0 0 18px;height:18px;line-height:18px;border-radius:50%;background:#114f9c;color:#fff;font-size:11px;font-weight:700;text-align:center}
     #page-salesplan .sp-x{border:none;background:transparent;color:#c0182a;font-size:16px;cursor:pointer}
     #page-salesplan .sp-btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
     #page-salesplan .sp-status{font-size:12px;color:var(--tx2)}
     #page-salesplan #sp-mapprev{max-width:100%;border:1px solid var(--bdr);border-radius:8px;margin-top:10px;display:none}
-    @media(max-width:560px){#page-salesplan .sp-poi{grid-template-columns:60px 1fr 1fr 1fr 28px}#page-salesplan .sp-poi .sp-poi-dist{display:none}}
+    @media(max-width:560px){#page-salesplan .sp-poi{grid-template-columns:84px 1fr 1fr 1fr 28px}#page-salesplan .sp-poi .sp-poi-dist{display:none}}
   </style>
   <div class="ph" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between">
     <div style="font-size:12px;color:var(--tx3);line-height:1.6">💡 填寫本案資料後，按下方「生成 PDF」即可產出橫式 A4 銷售企劃書（封面、公司介紹、本案物件、實價登錄、同類物件、周邊機能、封底）。</div>
@@ -17802,12 +17803,33 @@ async function spFetchPoi() {
 }
 
 function spAddPoi() { _spPoi.push({ type: '國小', name: '', dist: '', walk: '', drive: '', est: false }); spRenderPoi(); spSaveDraft(); }
-function spDelPoi(i) { _spPoi.splice(i, 1); spRenderPoi(); spSaveDraft(); }
-function spPoiSet(i, k, v) { if (_spPoi[i]) { _spPoi[i][k] = v; spSaveDraft(); } }
+function spDelPoi(i) { _spPoi.splice(i, 1); spRenderPoi(); spSaveDraft(); _spRefreshMap(); }   // 刪除後地圖編號立即往前遞補
+function spPoiSet(i, k, v) {
+  if (!_spPoi[i]) return;
+  _spPoi[i][k] = v; spSaveDraft();
+  // 類別或名稱改變會影響編號順序（交通在前、學區在後；名稱空白的不編號）→ 更新清單編號並重畫地圖
+  if (k === 'type' || k === 'name') { _spUpdatePoiBadges(); clearTimeout(_spMapTimer); _spMapTimer = setTimeout(_spRefreshMap, 700); }
+}
+let _spMapTimer = null;
+// 地圖與 PDF 共用的編號：依 PDF 顯示順序（交通：火車站／捷運站／輕軌站 → 學區：國小／國中，同組內依清單順序），
+// 只替「有座標、會畫在地圖上、名稱不是空白」的地點連續編號 1、2、3…，刪除或修改後自動遞補
+const SP_POI_GROUPS = [['火車站', '捷運站', '輕軌站'], ['國小', '國中']];
+function _spPoiNumbering() {
+  const num = {}; let k = 0;
+  SP_POI_GROUPS.forEach(types => _spPoi.forEach((p, i) => {
+    if (!types.includes(p.type) || !String(p.name || '').trim()) return;
+    if (p.lat != null && p.lng != null && _spCoords && _spHav(_spCoords.lat, _spCoords.lng, p.lat, p.lng) <= 2600) num[i] = ++k;
+  }));
+  return num;
+}
+function _spUpdatePoiBadges() {
+  const num = _spMapUser ? {} : _spPoiNumbering();
+  _spPoi.forEach((p, i) => { const b = _spEl('sp-poi-n-' + i); if (b) { b.textContent = num[i] || ''; b.style.visibility = num[i] ? 'visible' : 'hidden'; } });
+}
 function spRenderPoi() {
   const box = _spEl('sp-poi-list'); if (!box) return;
   const rows = _spPoi.map((p, i) => `<div class="sp-poi">
-    <select class="fc" onchange="spPoiSet(${i},'type',this.value)">${SP_POI_TYPES.map(t => `<option ${t === p.type ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <div style="display:flex;align-items:center;gap:4px"><span class="sp-poi-n" id="sp-poi-n-${i}" title="地圖上的編號"></span><select class="fc" style="flex:1;min-width:0" onchange="spPoiSet(${i},'type',this.value)">${SP_POI_TYPES.map(t => `<option ${t === p.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <input class="fc" value="${escAttr(p.name || '')}" placeholder="名稱" oninput="spPoiSet(${i},'name',this.value)">
     <input class="fc sp-poi-dist" type="number" value="${escAttr(p.dist)}" placeholder="距離(公尺)" oninput="spPoiSet(${i},'dist',this.value)">
     <input class="fc" type="number" value="${escAttr(p.walk)}" placeholder="步行(分)" oninput="spPoiSet(${i},'walk',this.value)">
@@ -17815,6 +17837,7 @@ function spRenderPoi() {
     <button class="sp-x" title="移除" onclick="spDelPoi(${i})">✕</button></div>`).join('');
   box.innerHTML = (_spPoi.length ? `<div class="sp-poi sp-poi-hd"><span>類別</span><span>名稱</span><span class="sp-poi-dist">距離(公尺)</span><span>步行(分)</span><span>開車(分)</span><span></span></div>` : '')
     + rows + `<button class="btn btn-g" style="font-size:12px;margin-top:4px" onclick="spAddPoi()">＋ 新增一列</button>`;
+  _spUpdatePoiBadges();
 }
 
 // ── 地圖（OpenStreetMap 圖磚拼接；有填 Google Maps API 金鑰則改用 Google 靜態地圖）──
@@ -17838,9 +17861,8 @@ function _spLoadImg(src, cors, ms) {
   });
 }
 function _spMapPoints() {
-  const pts = [];
-  _spPoi.forEach((p, i) => { if (p.lat != null && p.lng != null && _spCoords && _spHav(_spCoords.lat, _spCoords.lng, p.lat, p.lng) <= 2600) pts.push({ i, lat: p.lat, lng: p.lng }); });
-  return pts;
+  const num = _spPoiNumbering();
+  return Object.keys(num).map(i => ({ i: +i, n: num[i], lat: _spPoi[i].lat, lng: _spPoi[i].lng })).sort((a, b) => a.n - b.n);
 }
 function _spPickView() {
   const pts = _spMapPoints().concat([{ lat: _spCoords.lat, lng: _spCoords.lng, i: -1 }]);
@@ -17878,7 +17900,7 @@ async function spBuildMapImage() {
   const pts = _spMapPoints();
   if (gkey) {
     const c = _spUnproj(v.cx, v.cy, z);
-    const mk = [`markers=color:red%7C${_spCoords.lat},${_spCoords.lng}`].concat(pts.slice(0, 9).map(p => `markers=color:0x114f9c%7Clabel:${p.i + 1}%7C${p.lat},${p.lng}`)).join('&');
+    const mk = [`markers=color:red%7C${_spCoords.lat},${_spCoords.lng}`].concat(pts.slice(0, 9).map(p => `markers=color:0x114f9c%7Clabel:${p.n}%7C${p.lat},${p.lng}`)).join('&');
     const url = `https://maps.googleapis.com/maps/api/staticmap?center=${c.lat},${c.lng}&zoom=${z}&size=${SP_MAP_W}x${SP_MAP_H}&scale=2&language=zh-TW&maptype=roadmap&${mk}&key=${encodeURIComponent(gkey)}`;
     const im = await _spGoogleMap(url);
     if (im) { try { ctx.drawImage(im, 0, 0, W, H); return cv.toDataURL('image/jpeg', 0.9); } catch (e) { _spGoogleMsg = 'Google 地圖無法輸出，已改用 OpenStreetMap 底圖。'; } }
@@ -17909,7 +17931,7 @@ async function spBuildMapImage() {
     ctx.beginPath(); ctx.arc(q.x, q.y, 17, 0, Math.PI * 2); ctx.fillStyle = SP_BLUE; ctx.fill();
     ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = `700 20px ${SP_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(p.i + 1), q.x, q.y + 1);
+    ctx.fillText(String(p.n), q.x, q.y + 1);
   });
   // 本案：紅色圖釘 + 標籤
   const q = toXY(_spCoords.lat, _spCoords.lng);
@@ -17930,6 +17952,7 @@ async function spBuildMapImage() {
 async function _spRefreshMap() {
   if (_spMapUser) return;
   const img = await spBuildMapImage();
+  if (_spMapUser) return;   // 產生期間使用者改上傳了自己的截圖
   _spMapImg = img;
   const mp = _spEl('sp-mapprev');
   if (mp) { if (img) { mp.src = img; mp.style.display = 'block'; } else mp.style.display = 'none'; }
@@ -17998,7 +18021,7 @@ async function spOnMapFile(inp) {
   const f = inp.files && inp.files[0]; inp.value = '';
   if (!f) return;
   try {
-    _spMapImg = await _spReadImage(f, 1800, 0.9); _spMapUser = true;
+    _spMapImg = await _spReadImage(f, 1800, 0.9); _spMapUser = true; _spUpdatePoiBadges();
     const mp = _spEl('sp-mapprev'); mp.src = _spMapImg; mp.style.display = 'block';
     _spEl('sp-poi-status').textContent = '✅ 已改用您上傳的地圖截圖（再次按「查詢周邊機能與地圖」會改回自動地圖）';
   } catch (e) { alert('⚠️ ' + e.message); }
@@ -18146,6 +18169,7 @@ function _spPageAmenities(d, mapImg) {
   const f1 = n <= 4 ? 28 : (n <= 6 ? 25 : (n === 7 ? 22 : (n === 8 ? 21 : 19))), f2 = Math.round(f1 * 0.78);
   const badge = f2 + 6;
   const groups = [['交通', ['火車站', '捷運站', '輕軌站']], ['學區', ['國小', '國中']]];
+  const numbering = (mapImg && !_spMapUserFlagForPdf) ? _spPoiNumbering() : {};
   const html = groups.map(([title, types]) => {
     const items = poi.map((p, i) => ({ p, i })).filter(o => types.includes(o.p.type) && (o.p.name || '').trim());
     if (!items.length) return '';
@@ -18156,8 +18180,8 @@ function _spPageAmenities(d, mapImg) {
         if (_spNum(p.dist) > 0) parts.push(`距離${est} <b>${_spDistText(p.dist)}</b>`);
         if (_spNum(p.walk) > 0) parts.push(`步行約 <b>${Math.round(_spNum(p.walk))} 分鐘</b>`);
         if (_spNum(p.drive) > 0) parts.push(`車程約 <b>${Math.round(_spNum(p.drive))} 分鐘</b>`);
-        const hasNum = !!mapImg && !_spMapUserFlagForPdf && p.lat != null && p.lng != null;
-        const num = hasNum ? `<span style="display:inline-block;width:${badge}px;height:${badge}px;line-height:${badge}px;border-radius:50%;background:${SP_BLUE};color:#fff;text-align:center;font-size:${f2 - 1}px;font-weight:700">${i + 1}</span>` : '';
+        const hasNum = numbering[i] != null;
+        const num = hasNum ? `<span style="display:inline-block;width:${badge}px;height:${badge}px;line-height:${badge}px;border-radius:50%;background:${SP_BLUE};color:#fff;text-align:center;font-size:${f2 - 1}px;font-weight:700">${numbering[i]}</span>` : '';
         return `<div style="display:flex;margin:2px 0 ${Math.round(f1 * 0.25)}px 30px"><div style="flex:0 0 ${badge + 10}px;padding-top:${Math.round((f1 + 7 - badge) / 2)}px">${num}</div>`
           + `<div style="flex:1 1 auto"><div style="font-size:${f1}px;line-height:${f1 + 7}px;font-weight:400">${escH(p.name)}</div>`
           + (parts.length ? `<div style="font-size:${f2}px;line-height:${f2 + 7}px;font-weight:400;white-space:nowrap">${parts.join('　')}</div>` : '') + `</div></div>`;
