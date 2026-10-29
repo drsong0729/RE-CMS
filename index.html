@@ -3156,7 +3156,7 @@ render();
         <input class="fc" id="sp-latlng" placeholder="例：22.6634,120.2885　（門牌定位不準時，從 Google 地圖複製貼上）" oninput="spSaveDraft()"></div>
       <div class="sp-note">距離與步行／開車時間優先採用道路路網計算，網路服務連不上時改以直線距離換算（PDF 內標示「約」）。「學區」列出的是鄰近國小、國中，實際學區劃分仍以教育局公告為準。每一列都可直接修改文字或刪除。</div>
       <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">Google Maps API 金鑰（選填）</label>
-        <input class="fc" id="sp-gkey" placeholder="填入後地圖改用 Google 地圖底圖；留空則用 OpenStreetMap 底圖" oninput="spSaveDraft()"></div>
+        <input class="fc" id="sp-gkey" placeholder="填入後地圖改用 Google 地圖底圖；留空則用程式內建金鑰或 OpenStreetMap" oninput="spSaveDraft()"></div>
     </div>
 
     <div class="sp-btnrow">
@@ -17380,6 +17380,9 @@ document.addEventListener('touchstart', function(e){
 // 頁序：封面／公司介紹×2／本案物件／實價登錄／同類物件（每 4 筆一頁）／周邊機能／封底
 // 版面座標以「1287×910」為基準（與附檔 PDF 以 110dpi 轉圖的尺寸一致），輸出時等比例鋪滿 A4 橫向。
 // ═══════════════════════════════════════════════════════════════════════════
+// Google Maps 靜態地圖金鑰（選填）：填在下方引號內，所有人產生銷售企劃書時都會用 Google 地圖底圖；留空則用 OpenStreetMap 底圖。
+// 金鑰會公開在網頁原始碼裡，請務必在 Google Cloud Console 把金鑰限制為「HTTP 參照網址 https://drsong0729.github.io/*」且只允許 Maps Static API。
+const SP_GOOGLE_MAPS_API_KEY = 'AIzaSyBDX0LHYeD0bHQvzLezIir-ZYjOJUVHI3k';
 const SP_LS_KEY = 'salesplan_draft_v1';
 const SP_W = 1287, SP_H = 910;
 const SP_BLUE = '#114f9c', SP_WM = '#c3d2e6', SP_RED = '#e33924', SP_WM_RED = '#f7cdc8', SP_YEL = '#fece26';
@@ -17806,7 +17809,7 @@ async function spBuildMapImage() {
   const ctx = cv.getContext('2d');
   ctx.fillStyle = '#e8ecf1'; ctx.fillRect(0, 0, W, H);
   let ok = false;
-  const gkey = _spVal('sp-gkey');
+  const gkey = _spVal('sp-gkey') || SP_GOOGLE_MAPS_API_KEY;
   const pts = _spMapPoints();
   if (gkey) {
     const c = _spUnproj(v.cx, v.cy, z);
