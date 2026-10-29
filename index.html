@@ -3150,13 +3150,14 @@ render();
         <input type="file" id="sp-map-file" accept="image/*" style="display:none" onchange="spOnMapFile(this)">
         <span class="sp-status" id="sp-poi-status"></span>
       </div>
-      <img id="sp-mapprev" alt="地圖預覽">
+      <img id="sp-mapprev" alt="地圖預覽" onclick="spMapClick(event)" style="cursor:crosshair">
+      <div id="sp-maptip" class="sp-note" style="display:none;color:var(--acc);font-weight:600">👆 位置不準？直接在地圖上點選本案實際位置，系統會以該點重新計算最近的車站與學校。</div>
       <div id="sp-poi-list" style="margin-top:12px"></div>
       <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">本案座標（選填）</label>
-        <input class="fc" id="sp-latlng" placeholder="例：22.6634,120.2885　（門牌定位不準時，從 Google 地圖複製貼上）" oninput="spSaveDraft()"></div>
+        <input class="fc" id="sp-latlng" placeholder="例：22.6634,120.2885　（也可直接在上方地圖點選）" oninput="spLatlngInput()"></div>
       <div class="sp-note">距離與步行／開車時間優先採用道路路網計算，網路服務連不上時改以直線距離換算（PDF 內標示「約」）。「學區」列出的是鄰近國小、國中，實際學區劃分仍以教育局公告為準。每一列都可直接修改文字或刪除。</div>
       <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">Google Maps API 金鑰（選填）</label>
-        <input class="fc" id="sp-gkey" placeholder="填入後地圖改用 Google 地圖底圖；留空則用程式內建金鑰或 OpenStreetMap" oninput="spSaveDraft()"></div>
+        <input class="fc" id="sp-gkey" placeholder="填入後地圖改用 Google 地圖底圖；留空則使用 OpenStreetMap 底圖" oninput="spSaveDraft()"></div>
     </div>
 
     <div class="sp-btnrow">
@@ -17382,7 +17383,7 @@ document.addEventListener('touchstart', function(e){
 // ═══════════════════════════════════════════════════════════════════════════
 // Google Maps 靜態地圖金鑰（選填）：填在下方引號內，所有人產生銷售企劃書時都會用 Google 地圖底圖；留空則用 OpenStreetMap 底圖。
 // 金鑰會公開在網頁原始碼裡，請務必在 Google Cloud Console 把金鑰限制為「HTTP 參照網址 https://drsong0729.github.io/*」且只允許 Maps Static API。
-const SP_GOOGLE_MAPS_API_KEY = 'AIzaSyBDX0LHYeD0bHQvzLezIir-ZYjOJUVHI3k';
+const SP_GOOGLE_MAPS_API_KEY = '';
 const SP_LS_KEY = 'salesplan_draft_v1';
 const SP_W = 1287, SP_H = 910;
 const SP_BLUE = '#114f9c', SP_WM = '#c3d2e6', SP_RED = '#e33924', SP_WM_RED = '#f7cdc8', SP_YEL = '#fece26';
@@ -17406,6 +17407,8 @@ let _spCompPhotoIdx = -1;
 let _spInited = false;
 let _spGeoApprox = false;
 let _spGoogleMsg = '';
+let _spLatlngAddr = null;     // 座標欄是針對哪個地址設定的（地址改了就不再沿用）
+let _spMapView = null;        // 目前地圖的投影資訊，供點擊校正位置使用
 
 const _spEl = id => document.getElementById(id);
 const _spVal = id => { const e = _spEl(id); return e ? String(e.value || '').trim() : ''; };
@@ -17419,7 +17422,7 @@ function spSaveDraft() {
     const f = {};
     SP_FIELDS.forEach(id => { f[id] = _spEl(id) ? _spEl(id).value : ''; });
     const comps = _spComps.map(c => Object.assign({}, c, { photo: (c.photo && /^data:/.test(c.photo)) ? '' : (c.photo || '') }));
-    localStorage.setItem(SP_LS_KEY, JSON.stringify({ f, comps, poi: _spPoi, coords: _spCoords, unitManual: _spUnitManualFlag }));
+    localStorage.setItem(SP_LS_KEY, JSON.stringify({ f, comps, poi: _spPoi, coords: _spCoords, unitManual: _spUnitManualFlag, latlngAddr: _spLatlngAddr }));
   } catch (e) { /* 無痕模式等情況存不了，不影響使用 */ }
 }
 function _spLoadDraft() {
@@ -17435,6 +17438,7 @@ function initSalesPlanPage() {
       _spPoi = Array.isArray(d.poi) ? d.poi : [];
       _spCoords = d.coords || null;
       _spUnitManualFlag = !!d.unitManual;
+      _spLatlngAddr = d.latlngAddr != null ? d.latlngAddr : null;
     }
     // 姓名／電話：沒有草稿時，沿用「生成廣告」記住的業務資訊，再不然帶入登入者名稱
     let ag = {};
@@ -17688,18 +17692,47 @@ async function _spPhoton(q, city) {
   if (f) return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
   return null;
 }
+// 以建案名稱找「建築物本身」的位置（OSM 有標示建案名稱時，比路段中心點準很多）
+function _spNameRegex(name) {
+  const num = { '0': '〇零', '1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '9': '九' };
+  return String(name || '').replace(/\s+/g, '').split('').map(ch => {
+    if (/[0-9]/.test(ch)) return `[${ch}${num[ch]}]`;
+    if (ch === '號' || ch === '号') return '[號号]';
+    return ch.replace(/[.*+?^${}()|[\]\\"]/g, '\\$&');
+  }).join('');
+}
+async function _spLocateByName(name, near, city, dist) {
+  if (!name || !near) return null;
+  // Overpass：在路段中心點周邊 2.5 公里內找同名建築，取離路段中心最近者
+  const q = `[out:json][timeout:10];nwr["name"~"${_spNameRegex(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"](around:2500,${near.lat},${near.lng});out center tags 10;`;
+  const els = await _spOverpassQ(q, 9000);
+  if (els && els.length) {
+    const pts = els.map(e => ({ lat: e.lat != null ? e.lat : (e.center && e.center.lat), lng: e.lon != null ? e.lon : (e.center && e.center.lon) })).filter(p => p.lat != null && p.lng != null);
+    pts.sort((a, b) => _spHav(near.lat, near.lng, a.lat, a.lng) - _spHav(near.lat, near.lng, b.lat, b.lng));
+    if (pts[0]) return pts[0];
+  }
+  // 備援：Nominatim 直接搜尋建案名稱（需縣市／區吻合）
+  return await _spNominatim(`${city || ''}${dist || ''}${name}`, city, dist);
+}
 async function _spGeocode(addr) {
   // 使用者手動貼上的座標（例如從 Google 地圖右鍵複製「22.66,120.29」）優先
-  const m = _spVal('sp-latlng').match(/(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)/);
+  const m = (_spLatlngAddr === addr || _spLatlngAddr == null) && _spVal('sp-latlng').match(/(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)/);
   if (m) { const lat = parseFloat(m[1]), lng = parseFloat(m[2]); if (lat > 20 && lat < 27 && lng > 117 && lng < 123) return { coords: { lat, lng }, approx: false, manual: true }; }
   const city = _spCityOf(addr), dist = _spDistOf(addr);
   try { const g = await geocodeAddrProgressive(addr, city || undefined); if (g && g.coords) return { coords: g.coords, approx: g.approx }; } catch (e) { /* 換下一個 */ }
   const n0 = await _spNominatim(addr, city, dist); if (n0) return { coords: n0, approx: false };
   const road = _spRoadOnly(addr);
   if (road && road !== addr) {
-    try { const g = await geocodeAddr(road, city || undefined); if (g) return { coords: g, approx: true }; } catch (e) { /* 換下一個 */ }
-    const n1 = await _spNominatim(road, city, dist); if (n1) return { coords: n1, approx: true };
-    const p1 = await _spPhoton(road, city); if (p1) return { coords: p1, approx: true };
+    let rc = null;
+    try { const g = await geocodeAddr(road, city || undefined); if (g) rc = g; } catch (e) { /* 換下一個 */ }
+    if (!rc) rc = await _spNominatim(road, city, dist);
+    if (!rc) rc = await _spPhoton(road, city);
+    if (rc) {
+      // 路段中心點常離實際門牌很遠：有建案名稱的話，再試著找出建築物本身的位置
+      const byName = await _spLocateByName(_spVal('sp-case'), rc, city, dist);
+      if (byName) return { coords: byName, approx: false, byName: true };
+      return { coords: rc, approx: true };
+    }
   }
   return { coords: null, approx: false };
 }
@@ -17805,7 +17838,7 @@ async function spFetchPoi() {
     const secs = Math.round((Date.now() - t0) / 1000);
     st.textContent = (out.length ? `✅ 已整理 ${out.length} 個周邊地點（${secs} 秒）${out.some(o => o.est) ? '，部分時間為直線距離估算' : ''}` : '📭 附近查無符合的車站／學校資料，可在下方手動新增。')
       + (notes.length ? '　⚠️ ' + notes.join(' ') : '')
-      + (_spGeoApprox ? '　⚠️ 查不到完整門牌，已定位在該路段（位置為約略值），建議到 Google 地圖複製本案座標貼到「座標」欄後再查一次。' : '')
+      + (_spGeoApprox ? '　⚠️ 查不到完整門牌，已定位在該路段（位置為約略值）。請在下方地圖上點選本案實際位置，系統會以該點重新計算。' : '')
       + (_spGoogleMsg ? '　⚠️ ' + _spGoogleMsg : '')
       + (_spMapImg ? '' : '　⚠️ 地圖底圖載入失敗，可改用「自己的地圖截圖」。');
   } catch (e) {
@@ -17912,6 +17945,7 @@ async function spBuildMapImage() {
   const tiles = await Promise.all(jobs);
   tiles.forEach(t => { if (t.im) { ok = true; ctx.drawImage(t.im, t.tx * 256 - left, t.ty * 256 - top, 256, 256); } });
   if (!ok) return null;
+  _spMapView = { left, top, zt, W, H };
   const toXY = (lat, lng) => { const p = _spProj(lat, lng, zt); return { x: p.x - left, y: p.y - top }; };
   // 周邊地點：藍底白字編號
   pts.forEach(p => {
@@ -17943,7 +17977,20 @@ async function _spRefreshMap() {
   _spMapImg = img;
   const mp = _spEl('sp-mapprev');
   if (mp) { if (img) { mp.src = img; mp.style.display = 'block'; } else mp.style.display = 'none'; }
+  const tip = _spEl('sp-maptip'); if (tip) tip.style.display = (img && _spMapView && !_spMapUser) ? 'block' : 'none';
 }
+// 在地圖預覽上點選本案實際位置 → 以該點重新查詢周邊與距離
+function spMapClick(ev) {
+  if (_spMapUser || !_spMapView) return;
+  const im = ev.currentTarget, r = im.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / r.width * _spMapView.W, y = (ev.clientY - r.top) / r.height * _spMapView.H;
+  const p = _spUnproj(_spMapView.left + x, _spMapView.top + y, _spMapView.zt);
+  _spEl('sp-latlng').value = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+  _spLatlngAddr = _spVal('sp-addr');
+  spSaveDraft();
+  spFetchPoi();
+}
+function spLatlngInput() { _spLatlngAddr = _spVal('sp-addr'); spSaveDraft(); }
 async function spOnMapFile(inp) {
   const f = inp.files && inp.files[0]; inp.value = '';
   if (!f) return;
