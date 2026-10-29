@@ -1746,7 +1746,7 @@ let tripMapMarkersLayer = null;
   </div>
   <!-- 統計 -->
   <div id="inv-stats" style="display:flex;gap:10px;flex-wrap:wrap;padding:0 16px 12px"></div>
-  <!-- 地圖檢視（預設隱藏，點「🗺️ 地圖檢視」才載入 Leaflet + CARTO 底圖並開始定位） -->
+  <!-- 地圖檢視（預設隱藏，點「🗺️ 地圖檢視」才載入 Leaflet + OpenStreetMap 底圖並開始定位） -->
   <div id="inv-map-container" style="display:none;padding:0 16px 16px">
     <div id="inv-map-status" style="font-size:12px;color:var(--tx3);margin-bottom:8px"></div>
     <div id="inv-map" style="height:600px;border-radius:12px;border:1px solid var(--bdr);background:var(--bg2)"></div>
@@ -3150,8 +3150,12 @@ render();
         <input type="file" id="sp-map-file" accept="image/*" style="display:none" onchange="spOnMapFile(this)">
         <span class="sp-status" id="sp-poi-status"></span>
       </div>
-      <img id="sp-mapprev" alt="地圖預覽" onclick="spMapClick(event)" style="cursor:crosshair">
-      <div id="sp-maptip" class="sp-note" style="display:none;color:var(--acc);font-weight:600">👆 位置不準？直接在地圖上點選本案實際位置，系統會以該點重新計算最近的車站與學校。</div>
+      <div id="sp-picker-wrap" style="display:none;margin-top:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:6px">📍 確認本案位置：把圖釘拖曳（或在地圖上點選）到建案實際位置，距離與時間都以圖釘為起點計算</div>
+        <div id="sp-picker" style="height:380px;border:1px solid var(--bdr);border-radius:8px;overflow:hidden;background:#e8ecf1"></div>
+        <div class="sp-btnrow"><button class="btn btn-p" onclick="spPickerConfirm()">✅ 以圖釘位置查詢周邊</button></div>
+      </div>
+      <img id="sp-mapprev" alt="地圖預覽">
       <div id="sp-poi-list" style="margin-top:12px"></div>
       <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">本案座標（選填）</label>
         <input class="fc" id="sp-latlng" placeholder="例：22.6634,120.2885　（也可直接在上方地圖點選）" oninput="spLatlngInput()"></div>
@@ -9438,10 +9442,9 @@ async function renderTripMap(ids) {
   // 初始化或沿用地圖實例
   if (!tripMapInstance) {
     tripMapInstance = L.map(container).setView([mapCenter.lat, mapCenter.lng], 12);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      subdomains: 'abcd',
-      maxZoom: 20
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
     }).addTo(tripMapInstance);
     tripMapMarkersLayer = L.layerGroup().addTo(tripMapInstance);
   } else {
@@ -11768,10 +11771,10 @@ body{padding:16px}
   })();
 }
 
-// ── 地圖檢視（CARTO 免費底圖 + Leaflet.js 繪製標記）───────────────────────────
+// ── 地圖檢視（OpenStreetMap 底圖 + Leaflet.js 繪製標記）───────────────────────────
 // 座標透過既有的 Google 地址轉座標功能取得（geocodeAddr），與「行程規劃」共用同一份
 // 跨 session 地址座標快取（geoAddrCache，存在 localStorage），同一地址不會重複呼叫定位服務。
-// 底圖使用 CARTO 的公開免費底圖（Voyager 樣式），不需要申請帳號或金鑰。
+// 底圖使用 OpenStreetMap 官方圖磚，不需要申請帳號或金鑰（CARTO 底圖已改為需金鑰，故更換）。
 let _invMapMode = false;
 let _invMapInstance = null;
 let _invMapMarkersLayer = null;
@@ -11853,10 +11856,9 @@ async function renderInventoryMap(){
 
   if(!_invMapInstance){
     _invMapInstance = L.map('inv-map').setView([22.6845, 120.2946], 13); // 預設置中：高雄市左營區
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      subdomains: 'abcd',
-      maxZoom: 20
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
     }).addTo(_invMapInstance);
     _invMapMarkersLayer = L.layerGroup().addTo(_invMapInstance);
   } else {
@@ -17777,6 +17779,13 @@ async function spFetchPoi() {
     if (!g || !g.coords) { st.textContent = '⚠️ 地址與路名都查不到座標。請確認地址含縣市、區、路名；或在「座標」欄貼上 Google 地圖的座標（地圖上對本案右鍵即可複製）。'; return; }
     _spCoords = { lat: g.coords.lat, lng: g.coords.lng };
     _spGeoApprox = !!g.approx;
+    // 先在互動地圖上標出本案位置，讓業務確認圖釘是否落在建案上（門牌查不到時只能定位到路段，必須由業務校正）
+    await spShowPicker(_spCoords, _spGeoApprox);
+    if (_spGeoApprox) {
+      _spPoi = []; spRenderPoi();
+      st.textContent = '⚠️ 地址的完整門牌在地圖資料庫查不到，圖釘目前只在該路段上。請在下方地圖把圖釘拖到（或點選）本案實際位置，再按「以圖釘位置查詢周邊」。';
+      return;
+    }
     // 1) 找出候選地點（快取 → Overpass 三路並行 → Nominatim 備援）
     let cands = _spPoiCacheGet(_spCoords);
     if (!cands) {
@@ -17838,7 +17847,7 @@ async function spFetchPoi() {
     const secs = Math.round((Date.now() - t0) / 1000);
     st.textContent = (out.length ? `✅ 已整理 ${out.length} 個周邊地點（${secs} 秒）${out.some(o => o.est) ? '，部分時間為直線距離估算' : ''}` : '📭 附近查無符合的車站／學校資料，可在下方手動新增。')
       + (notes.length ? '　⚠️ ' + notes.join(' ') : '')
-      + (_spGeoApprox ? '　⚠️ 查不到完整門牌，已定位在該路段（位置為約略值）。請在下方地圖上點選本案實際位置，系統會以該點重新計算。' : '')
+      + (g.manual ? '　（依您確認的圖釘位置計算）' : (g.byName ? '　（已依建案名稱定位，如圖釘不在建案上請拖曳校正後重查）' : '　（如圖釘不在建案上，請拖曳校正後按「以圖釘位置查詢周邊」）'))
       + (_spGoogleMsg ? '　⚠️ ' + _spGoogleMsg : '')
       + (_spMapImg ? '' : '　⚠️ 地圖底圖載入失敗，可改用「自己的地圖截圖」。');
   } catch (e) {
@@ -17977,14 +17986,35 @@ async function _spRefreshMap() {
   _spMapImg = img;
   const mp = _spEl('sp-mapprev');
   if (mp) { if (img) { mp.src = img; mp.style.display = 'block'; } else mp.style.display = 'none'; }
-  const tip = _spEl('sp-maptip'); if (tip) tip.style.display = (img && _spMapView && !_spMapUser) ? 'block' : 'none';
 }
-// 在地圖預覽上點選本案實際位置 → 以該點重新查詢周邊與距離
-function spMapClick(ev) {
-  if (_spMapUser || !_spMapView) return;
-  const im = ev.currentTarget, r = im.getBoundingClientRect();
-  const x = (ev.clientX - r.left) / r.width * _spMapView.W, y = (ev.clientY - r.top) / r.height * _spMapView.H;
-  const p = _spUnproj(_spMapView.left + x, _spMapView.top + y, _spMapView.zt);
+// ── 位置確認／校正：可拖曳、縮放的互動地圖（Leaflet + OpenStreetMap），圖釘就是計算距離的起點 ──
+let _spPicker = null;
+async function spShowPicker(c, approx) {
+  const wrap = _spEl('sp-picker-wrap'); if (!wrap) return;
+  wrap.style.display = 'block';
+  try {
+    if (typeof _ensureLeafletLoaded === 'function') await _ensureLeafletLoaded();
+    if (!window.L) throw new Error('Leaflet 未載入');
+    const box = _spEl('sp-picker');
+    if (!_spPicker) {
+      const map = L.map(box, { zoomControl: true }).setView([c.lat, c.lng], approx ? 16 : 17);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+      const marker = L.marker([c.lat, c.lng], { draggable: true }).addTo(map);
+      map.on('click', ev => marker.setLatLng(ev.latlng));
+      _spPicker = { map, marker };
+    } else {
+      _spPicker.marker.setLatLng([c.lat, c.lng]);
+      _spPicker.map.setView([c.lat, c.lng], approx ? 16 : 17);
+    }
+    setTimeout(() => { try { _spPicker.map.invalidateSize(); _spPicker.map.setView(_spPicker.marker.getLatLng(), approx ? 16 : 17); } catch (e) { /* ignore */ } }, 120);
+    wrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  } catch (e) {
+    _spEl('sp-picker').innerHTML = '<div style="padding:16px;font-size:12px;color:var(--tx3)">互動地圖載入失敗（網路或套件被擋）。請改在下方「本案座標」欄貼上座標。</div>';
+  }
+}
+function spPickerConfirm() {
+  if (!_spPicker) return;
+  const p = _spPicker.marker.getLatLng();
   _spEl('sp-latlng').value = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
   _spLatlngAddr = _spVal('sp-addr');
   spSaveDraft();
