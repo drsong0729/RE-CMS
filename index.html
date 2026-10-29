@@ -3143,23 +3143,22 @@ render();
     </div>
 
     <div class="sp-card">
-      <div class="sp-h">📍 周邊機能 <small>依本案地址查詢火車站／捷運站／輕軌站與國小、國中的距離與步行、開車時間</small></div>
-      <div class="sp-btnrow" style="margin-top:0">
-        <button class="btn btn-p" id="sp-poi-btn" onclick="spFetchPoi()">📡 查詢周邊機能與地圖</button>
+      <div class="sp-h">📍 周邊機能 <small>先在地圖上放好本案位置的圖釘，再查詢最近的火車站／捷運站／輕軌站與國小、國中（距離、步行與開車時間都以圖釘為起點）</small></div>
+      <div id="sp-picker-wrap">
+        <div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:6px">① 拖曳圖釘（或在地圖上點一下）到本案實際位置；可用滾輪／雙指縮放、拖曳移動地圖</div>
+        <div id="sp-picker" style="height:400px;border:1px solid var(--bdr);border-radius:8px;overflow:hidden;background:#e8ecf1"></div>
+      </div>
+      <div class="sp-btnrow">
+        <button class="btn btn-p" id="sp-poi-btn" onclick="spFetchPoi()">📡 ② 查詢周邊機能與地圖</button>
         <button class="btn btn-g" onclick="document.getElementById('sp-map-file').click()">🖼️ 改用自己的地圖截圖</button>
         <input type="file" id="sp-map-file" accept="image/*" style="display:none" onchange="spOnMapFile(this)">
         <span class="sp-status" id="sp-poi-status"></span>
       </div>
-      <div id="sp-picker-wrap" style="display:none;margin-top:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:6px">📍 確認本案位置：把圖釘拖曳（或在地圖上點選）到建案實際位置，距離與時間都以圖釘為起點計算</div>
-        <div id="sp-picker" style="height:380px;border:1px solid var(--bdr);border-radius:8px;overflow:hidden;background:#e8ecf1"></div>
-        <div class="sp-btnrow"><button class="btn btn-p" onclick="spPickerConfirm()">✅ 以圖釘位置查詢周邊</button></div>
-      </div>
       <img id="sp-mapprev" alt="地圖預覽">
       <div id="sp-poi-list" style="margin-top:12px"></div>
-      <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">本案座標（選填）</label>
-        <input class="fc" id="sp-latlng" placeholder="例：22.6634,120.2885　（也可直接在上方地圖點選）" oninput="spLatlngInput()"></div>
-      <div class="sp-note">距離與步行／開車時間優先採用道路路網計算，網路服務連不上時改以直線距離換算（PDF 內標示「約」）。「學區」列出的是鄰近國小、國中，實際學區劃分仍以教育局公告為準。每一列都可直接修改文字或刪除。</div>
+      <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">本案座標（拖曳圖釘會自動填入；也可貼上 Google 地圖座標）</label>
+        <input class="fc" id="sp-latlng" placeholder="例：22.6634,120.2885" oninput="spLatlngInput()"></div>
+      <div class="sp-note">圖資來自 OpenStreetMap，依圖釘位置以直線距離找出最近的車站與學校（優先列出公立學校）；步行／開車時間優先採用道路路網計算，連不上時改以直線距離換算（PDF 內標示「約」）。「學區」列出的是鄰近國小、國中，實際學區劃分仍以教育局公告為準。每一列都可直接修改文字或刪除。</div>
       <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">Google Maps API 金鑰（選填）</label>
         <input class="fc" id="sp-gkey" placeholder="填入後地圖改用 Google 地圖底圖；留空則使用 OpenStreetMap 底圖" oninput="spSaveDraft()"></div>
     </div>
@@ -17407,9 +17406,7 @@ let _spCoords = null;         // 本案座標 {lat,lng}
 let _spUnitManualFlag = false;
 let _spCompPhotoIdx = -1;
 let _spInited = false;
-let _spGeoApprox = false;
 let _spGoogleMsg = '';
-let _spLatlngAddr = null;     // 座標欄是針對哪個地址設定的（地址改了就不再沿用）
 let _spMapView = null;        // 目前地圖的投影資訊，供點擊校正位置使用
 
 const _spEl = id => document.getElementById(id);
@@ -17424,7 +17421,7 @@ function spSaveDraft() {
     const f = {};
     SP_FIELDS.forEach(id => { f[id] = _spEl(id) ? _spEl(id).value : ''; });
     const comps = _spComps.map(c => Object.assign({}, c, { photo: (c.photo && /^data:/.test(c.photo)) ? '' : (c.photo || '') }));
-    localStorage.setItem(SP_LS_KEY, JSON.stringify({ f, comps, poi: _spPoi, coords: _spCoords, unitManual: _spUnitManualFlag, latlngAddr: _spLatlngAddr }));
+    localStorage.setItem(SP_LS_KEY, JSON.stringify({ f, comps, poi: _spPoi, coords: _spCoords, unitManual: _spUnitManualFlag }));
   } catch (e) { /* 無痕模式等情況存不了，不影響使用 */ }
 }
 function _spLoadDraft() {
@@ -17440,7 +17437,6 @@ function initSalesPlanPage() {
       _spPoi = Array.isArray(d.poi) ? d.poi : [];
       _spCoords = d.coords || null;
       _spUnitManualFlag = !!d.unitManual;
-      _spLatlngAddr = d.latlngAddr != null ? d.latlngAddr : null;
     }
     // 姓名／電話：沒有草稿時，沿用「生成廣告」記住的業務資訊，再不然帶入登入者名稱
     let ag = {};
@@ -17451,6 +17447,7 @@ function initSalesPlanPage() {
   spRenderComps();
   spRenderPoi();
   spRenderPhoto();
+  spInitPicker();   // 一進頁面就顯示地圖與圖釘
 }
 function spResetAll() {
   if (!confirm('確定要清空本頁所有欄位（含同類物件與周邊機能）嗎？\n（姓名、電話會保留）')) return;
@@ -17458,6 +17455,7 @@ function spResetAll() {
   SP_FIELDS.forEach(id => { const e = _spEl(id); if (!e) return; if (e.tagName === 'SELECT') e.selectedIndex = 0; else e.value = ''; });
   _spEl('sp-name').value = keep.name; _spEl('sp-phone').value = keep.phone; _spEl('sp-gkey').value = keep.key;
   _spPhoto = null; _spMapImg = null; _spMapUser = false; _spComps = []; _spPoi = []; _spCoords = null; _spUnitManualFlag = false;
+  spPickerReset();
   const mp = _spEl('sp-mapprev'); if (mp) mp.style.display = 'none';
   ['sp-comps-status', 'sp-poi-status', 'sp-gen-status'].forEach(id => { if (_spEl(id)) _spEl(id).textContent = ''; });
   spRenderComps(); spRenderPoi(); spRenderPhoto(); spSaveDraft();
@@ -17612,6 +17610,8 @@ async function spSearchComps() {
 }
 
 // ── 周邊機能 ──
+// 資料來源：OpenStreetMap 官方搜尋服務（Nominatim）以「圖釘為中心的範圍」搜尋學校與車站，一律依直線距離由近到遠排序；
+// 該服務連不上時才改用 Overpass 備援。起點只有一個：地圖上的圖釘（不再依地址查詢座標）。
 const SP_POI_TYPES = ['火車站', '捷運站', '輕軌站', '國小', '國中'];
 const SP_OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.osm.jp/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 function _spHav(la1, ln1, la2, ln2) {
@@ -17624,45 +17624,80 @@ async function _spFetchJson(url, opt, ms) {
   try { const r = await fetch(url, Object.assign({ signal: ctrl.signal }, opt || {})); if (!r.ok) return null; return await r.json(); }
   catch (e) { return null; } finally { clearTimeout(to); }
 }
-// 公用 Overpass 伺服器常常忙碌：同時問多台，先回來的有效結果就用，並把查詢拆小以加快回應
 function _spRace(promises) {
   return new Promise(res => {
     let left = promises.length; if (!left) return res(null);
     promises.forEach(p => p.then(v => { if (v) res(v); else if (--left === 0) res(null); }, () => { if (--left === 0) res(null); }));
   });
 }
+// ── 主要來源：Nominatim 範圍搜尋（[school]／[station] 是它的分類搜尋語法；官方限制每秒 1 次請求） ──
+let _spNomLast = 0;
+async function _spNomBox(q, c, d) {
+  const w = _spNomLast + 1150 - Date.now(); if (w > 0) await new Promise(r => setTimeout(r, w));
+  _spNomLast = Date.now();
+  const vb = [c.lng - d, c.lat + d, c.lng + d, c.lat - d].map(x => x.toFixed(5)).join(',');
+  const j = await _spFetchJson('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=50&bounded=1&extratags=1&accept-language=zh-TW&viewbox=' + vb + '&q=' + encodeURIComponent(q), null, 12000);
+  return Array.isArray(j) ? j : null;
+}
+// 單次最多回 50 筆（且不是依距離排序）：回滿 50 筆代表範圍內可能還有更多，就把範圍切成四塊再各查一次
+async function _spNomArea(q, c, d, depth) {
+  const res = await _spNomBox(q, c, d);
+  if (!res) return null;
+  if (res.length < 50 || depth <= 0) return res;
+  const h = d / 2, all = []; let fail = 0;
+  for (const dy of [-h, h]) for (const dx of [-h, h]) {
+    const sub = await _spNomArea(q, { lat: c.lat + dy, lng: c.lng + dx }, h, depth - 1);
+    if (sub) sub.forEach(r => all.push(r)); else fail++;
+  }
+  return fail === 4 ? res : all;
+}
+function _spNomToTags(r) {
+  const t = Object.assign({}, r.extratags || {});
+  t.name = (r.namedetails && r.namedetails['name:zh']) || r.name || String(r.display_name || '').split(',')[0].trim();
+  if (r.category) t[r.category] = r.type;
+  return t;
+}
+// ── 備援來源：Overpass（公用伺服器常忙碌，三路並行、先回來的有效結果就用）──
 function _spOverpassQ(q, ms) {
   return _spRace(SP_OVERPASS.map(u => _spFetchJson(u, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, ms)
     .then(j => (j && Array.isArray(j.elements)) ? j.elements : null)));
 }
-// 回傳 { schools:[…]|null, transit:[…]|null, rail:[…]|null }（null＝該查詢所有伺服器都沒回應）
 async function _spOverpass(lat, lng) {
   const c = `${lat},${lng}`;
-  const [schools, transit, rail] = await Promise.all([
-    _spOverpassQ(`[out:json][timeout:12];nwr["amenity"="school"]["name"](around:3500,${c});out center tags;`, 14000),
-    _spOverpassQ(`[out:json][timeout:12];(nwr["railway"~"^(station|halt|tram_stop)$"]["name"](around:4500,${c});nwr["station"~"subway|light_rail"]["name"](around:4500,${c}););out center tags;`, 14000),
-    _spOverpassQ(`[out:json][timeout:12];node["railway"="station"]["name"](around:9000,${c});out tags;`, 14000)
+  const [schools, rail] = await Promise.all([
+    _spOverpassQ(`[out:json][timeout:15];nwr["amenity"="school"]["name"](around:4500,${c});out center tags;`, 16000),
+    _spOverpassQ(`[out:json][timeout:15];nwr["railway"~"^(station|halt|tram_stop)$"]["name"](around:9000,${c});out center tags;`, 16000)
   ]);
-  return { schools, transit, rail };
+  return { schools, rail };
 }
-// 依 OSM 標籤分類成 火車站／捷運站／輕軌站／國小／國中（可能同時屬於國小與國中，例如「國民中小學」）
+// 依 OSM 標籤分類成 火車站／捷運站／輕軌站／國小／國中，並產生簡短名稱（內惟火車站、捷運凹子底站、輕軌美術館站、中山國小、七賢國中）
 function _spClassify(t) {
-  const name = t['name:zh'] || t.name || '';
+  const raw = String(t['name:zh'] || t.name || '').trim();
+  if (!raw) return [];
   const net = `${t.network || ''}${t.operator || ''}`;
-  const types = [];
   if (t.amenity === 'school') {
-    const short = name.replace(/^.{2,3}(市立|縣立)/, '').replace(/^.{2,3}[市縣]/, '').replace(/^.{1,3}[區鄉鎮]/, '').replace(/^(市立|縣立|私立|國立)/, '').replace('國民中小學', '國中小').replace('國民小學', '國小').replace('國民中學', '國中');
-    if (/國小|國民小學|國中小|國民中小學|附小/.test(name)) types.push('國小');
-    if (/國中|國民中學|國中小|國民中小學/.test(name)) types.push('國中');
-    return types.map(ty => ({ type: ty, name: short || name }));
+    const short = raw.replace(/^.{2,3}(市立|縣立)/, '').replace(/^.{2,3}[市縣]/, '').replace(/^.{1,3}[區鄉鎮]/, '').replace(/^(市立|縣立|私立|國立)/, '')
+      .replace('國民中小學', '國中小').replace('國民小學', '國小').replace('國民中學', '國中');
+    const minor = /私立|附設|實驗|外僑|美國學校|僑/.test(raw) || /Catholic|私/.test(t.operator || '');
+    const types = [];
+    if (/國小|國民小學|國中小|國民中小學/.test(raw)) types.push('國小');
+    if (/國中|國民中學|國中小|國民中小學/.test(raw)) types.push('國中');
+    return types.map(ty => ({ type: ty, name: short || raw, minor }));
   }
-  const isTram = t.railway === 'tram_stop' || t.station === 'light_rail' || t.light_rail === 'yes' || /輕軌/.test(net);
-  const isMetro = t.station === 'subway' || t.subway === 'yes' || /捷運/.test(net);
-  const isRail = t.railway === 'station' || t.railway === 'halt';
-  if (isTram) return [{ type: '輕軌站', name: (/輕軌/.test(name) ? '' : '輕軌') + name + (/站$/.test(name) ? '' : '站') }];
-  if (isMetro) return [{ type: '捷運站', name: name + (/站$/.test(name) ? '' : '站') }];
-  if (isRail) return [{ type: '火車站', name: name + (/站$/.test(name) ? '' : '站') }];
-  return [];
+  if (/高鐵/.test(net + raw)) return [];
+  let kind = '';
+  if (t.station === 'subway') kind = 'metro';
+  else if (t.station === 'light_rail') kind = 'lrt';
+  else if (t.station === 'train') kind = 'tra';
+  else if (t.railway === 'tram_stop' || t.light_rail === 'yes' || /輕軌/.test(net + raw)) kind = 'lrt';
+  else if (t.subway === 'yes') kind = 'metro';
+  else if (/臺鐵|台鐵|鐵路/.test(net) || t.railway === 'halt') kind = 'tra';
+  else if (/捷運/.test(net)) kind = 'metro';
+  if (!kind) return [];
+  const nm = raw.replace(/[（(].*?[）)]/g, '').trim();
+  if (kind === 'tra') return [{ type: '火車站', name: nm.replace(/^(臺鐵|台鐵)/, '').replace(/車?站$/, '') + '火車站' }];
+  if (kind === 'metro') { const b = nm.replace(/^捷運/, ''); return [{ type: '捷運站', name: '捷運' + b + (/站$/.test(b) ? '' : '站') }]; }
+  const b = nm.replace(/^(高雄)?輕軌/, ''); return [{ type: '輕軌站', name: '輕軌' + b + (/站$/.test(b) ? '' : '站') }];
 }
 async function _spRoute(profile, a, b) {
   const base = profile === 'foot' ? 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/' : 'https://routing.openstreetmap.de/routed-car/route/v1/driving/';
@@ -17670,171 +17705,83 @@ async function _spRoute(profile, a, b) {
   const r = j && j.routes && j.routes[0];
   return r ? { sec: r.duration, m: r.distance } : null;
 }
-// 地址定位：完整門牌查不到時（OSM 在台灣的門牌資料不全很常見），依序退到「路段」並換備援服務
-function _spRoadOnly(addr) {
-  const m = String(addr || '').match(/^(.*?(?:路|街|大道)(?:[一二三四五六七八九十百0-9]+段)?)/);
-  return m ? m[1] : '';
+function _spParseLatLng(s) {
+  const m = String(s || '').match(/(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+  return (lat > 20 && lat < 27 && lng > 117 && lng < 123) ? { lat, lng } : null;
 }
-const _spT = x => String(x || '').replace(/臺/g, '台');
-function _spCityOf(addr) { const m = String(addr || '').match(/^(.{2,3}[市縣])/); return m ? m[1] : ''; }
-function _spDistOf(addr) { const m = String(addr || '').match(/[市縣](.{1,3}?[區鄉鎮市])/); return m ? m[1] : ''; }
-async function _spNominatim(q, city, dist) {
-  const j = await _spFetchJson('https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=tw&limit=5&accept-language=zh-TW&q=' + encodeURIComponent(q), null, 12000);
-  if (!Array.isArray(j)) return null;
-  // 只接受「地址描述裡確實含有同縣市（與同區）」的結果，避免同名路段配對到別的縣市
-  const ok = j.find(r => { const dn = _spT(r.display_name); return (!city || dn.includes(_spT(city))) && (!dist || dn.includes(_spT(dist))); })
-    || j.find(r => !dist ? false : (!city || _spT(r.display_name).includes(_spT(city))));
-  if (ok) { const lat = parseFloat(ok.lat), lng = parseFloat(ok.lon); if (!isNaN(lat) && !isNaN(lng)) return { lat, lng }; }
-  return null;
-}
-async function _spPhoton(q, city) {
-  const j = await _spFetchJson('https://photon.komoot.io/api/?limit=5&q=' + encodeURIComponent(q), null, 12000);
-  const fs = (j && j.features) || [];
-  const f = fs.find(x => x.geometry && x.geometry.coordinates && (!city || _spT((x.properties || {}).city || (x.properties || {}).state || '').includes(_spT(city))));
-  if (f) return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
-  return null;
-}
-// 以建案名稱找「建築物本身」的位置（OSM 有標示建案名稱時，比路段中心點準很多）
-function _spNameRegex(name) {
-  const num = { '0': '〇零', '1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '9': '九' };
-  return String(name || '').replace(/\s+/g, '').split('').map(ch => {
-    if (/[0-9]/.test(ch)) return `[${ch}${num[ch]}]`;
-    if (ch === '號' || ch === '号') return '[號号]';
-    return ch.replace(/[.*+?^${}()|[\]\\"]/g, '\\$&');
-  }).join('');
-}
-async function _spLocateByName(name, near, city, dist) {
-  if (!name || !near) return null;
-  // Overpass：在路段中心點周邊 2.5 公里內找同名建築，取離路段中心最近者
-  const q = `[out:json][timeout:10];nwr["name"~"${_spNameRegex(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"](around:2500,${near.lat},${near.lng});out center tags 10;`;
-  const els = await _spOverpassQ(q, 9000);
-  if (els && els.length) {
-    const pts = els.map(e => ({ lat: e.lat != null ? e.lat : (e.center && e.center.lat), lng: e.lon != null ? e.lon : (e.center && e.center.lon) })).filter(p => p.lat != null && p.lng != null);
-    pts.sort((a, b) => _spHav(near.lat, near.lng, a.lat, a.lng) - _spHav(near.lat, near.lng, b.lat, b.lng));
-    if (pts[0]) return pts[0];
-  }
-  // 備援：Nominatim 直接搜尋建案名稱（需縣市／區吻合）
-  return await _spNominatim(`${city || ''}${dist || ''}${name}`, city, dist);
-}
-async function _spGeocode(addr) {
-  // 使用者手動貼上的座標（例如從 Google 地圖右鍵複製「22.66,120.29」）優先
-  const m = (_spLatlngAddr === addr || _spLatlngAddr == null) && _spVal('sp-latlng').match(/(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)/);
-  if (m) { const lat = parseFloat(m[1]), lng = parseFloat(m[2]); if (lat > 20 && lat < 27 && lng > 117 && lng < 123) return { coords: { lat, lng }, approx: false, manual: true }; }
-  const city = _spCityOf(addr), dist = _spDistOf(addr);
-  try { const g = await geocodeAddrProgressive(addr, city || undefined); if (g && g.coords) return { coords: g.coords, approx: g.approx }; } catch (e) { /* 換下一個 */ }
-  const n0 = await _spNominatim(addr, city, dist); if (n0) return { coords: n0, approx: false };
-  const road = _spRoadOnly(addr);
-  if (road && road !== addr) {
-    let rc = null;
-    try { const g = await geocodeAddr(road, city || undefined); if (g) rc = g; } catch (e) { /* 換下一個 */ }
-    if (!rc) rc = await _spNominatim(road, city, dist);
-    if (!rc) rc = await _spPhoton(road, city);
-    if (rc) {
-      // 路段中心點常離實際門牌很遠：有建案名稱的話，再試著找出建築物本身的位置
-      const byName = await _spLocateByName(_spVal('sp-case'), rc, city, dist);
-      if (byName) return { coords: byName, approx: false, byName: true };
-      return { coords: rc, approx: true };
-    }
-  }
-  return { coords: null, approx: false };
-}
-// Overpass 全部連不上時的備援：用 Nominatim 在本案周邊範圍內搜尋關鍵字（每秒最多一次請求）
-async function _spNomPoi(type, c) {
-  const kw = { '國小': '國民小學', '國中': '國民中學', '捷運站': '捷運站', '輕軌站': '輕軌', '火車站': '火車站' }[type];
-  const d = type === '火車站' ? 0.1 : 0.045;
-  const vb = [c.lng - d, c.lat + d, c.lng + d, c.lat - d].join(',');
-  const j = await _spFetchJson('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=10&accept-language=zh-TW&bounded=1&viewbox=' + vb + '&q=' + encodeURIComponent(kw), null, 10000);
-  if (!Array.isArray(j)) return [];
-  const out = [];
-  j.forEach(r => {
-    const nm = String(r.display_name || '').split(',')[0].trim();
-    const lat = parseFloat(r.lat), lng = parseFloat(r.lon);
-    if (!nm || isNaN(lat) || isNaN(lng)) return;
-    const tags = (type === '國小' || type === '國中') ? { amenity: 'school', name: nm }
-      : type === '捷運站' ? { railway: 'station', station: 'subway', name: nm }
-      : type === '輕軌站' ? { railway: 'tram_stop', name: nm }
-      : { railway: 'station', name: nm };
-    _spClassify(tags).forEach(cl => { if (cl.type === type) out.push({ type, name: cl.name, lat, lng }); });
+// 從候選清單挑出每類最近的：火車站／捷運站／輕軌站各 1；國小、國中各取最近 1 所，第二近的若在 1 公里內也列入。公立學校優先於私立／附設
+function _spPickPoi(cands) {
+  const maxR = { '火車站': 12000, '捷運站': 8000, '輕軌站': 8000, '國小': 4500, '國中': 4500 };
+  const picked = [];
+  SP_POI_TYPES.forEach(ty => {
+    let pool = cands.filter(c => c.type === ty && c.straight <= maxR[ty]).sort((a, b) => a.straight - b.straight);
+    if (ty === '國小' || ty === '國中') pool = pool.filter(c => !c.minor).concat(pool.filter(c => c.minor));
+    if (!pool.length) return;
+    picked.push(pool[0]);
+    if ((ty === '國小' || ty === '國中') && pool[1] && !pool[1].minor && pool[1].straight <= 1000) picked.push(pool[1]);
   });
-  return out;
-}
-const SP_POI_CACHE_KEY = 'salesplan_poi_cache_v1';
-function _spPoiCacheGet(c) {
-  try { const all = JSON.parse(localStorage.getItem(SP_POI_CACHE_KEY) || '{}'); const e = all[c.lat.toFixed(3) + ',' + c.lng.toFixed(3)]; if (e && Date.now() - e.t < 14 * 864e5) return e.cands; } catch (e) { /* ignore */ }
-  return null;
-}
-function _spPoiCacheSet(c, cands) {
-  try { const all = JSON.parse(localStorage.getItem(SP_POI_CACHE_KEY) || '{}'); all[c.lat.toFixed(3) + ',' + c.lng.toFixed(3)] = { t: Date.now(), cands }; const ks = Object.keys(all); if (ks.length > 30) delete all[ks[0]]; localStorage.setItem(SP_POI_CACHE_KEY, JSON.stringify(all)); } catch (e) { /* ignore */ }
+  return picked;
 }
 async function spFetchPoi() {
   const st = _spEl('sp-poi-status'), btn = _spEl('sp-poi-btn');
-  const addr = _spVal('sp-addr');
-  if (!addr) { alert('請先填寫本案「地址」'); return; }
+  // 起點只有圖釘（或座標欄）；沒有放圖釘就不查，避免用預設位置算出一堆不相干的地點
+  if (!_spPicker) { try { await spInitPicker(); } catch (e) { /* 下面會處理 */ } }
+  let c = null;
+  if (_spPicker && _spPinSet) { const p = _spPicker.marker.getLatLng(); c = { lat: p.lat, lng: p.lng }; }
+  if (!c) c = _spParseLatLng(_spVal('sp-latlng'));
+  if (!c) {
+    st.textContent = '⚠️ 請先在上方地圖把圖釘拖曳（或點選）到本案實際位置，再按「查詢周邊機能與地圖」。';
+    const w = _spEl('sp-picker-wrap'); if (w) w.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
   btn.disabled = true; _spMapUser = false;
   const t0 = Date.now();
   const notes = [];
   try {
-    st.textContent = '⏳ 定位地址中…';
-    const g = await _spGeocode(addr);
-    if (!g || !g.coords) { st.textContent = '⚠️ 地址與路名都查不到座標。請確認地址含縣市、區、路名；或在「座標」欄貼上 Google 地圖的座標（地圖上對本案右鍵即可複製）。'; return; }
-    _spCoords = { lat: g.coords.lat, lng: g.coords.lng };
-    _spGeoApprox = !!g.approx;
-    // 先在互動地圖上標出本案位置，讓業務確認圖釘是否落在建案上（門牌查不到時只能定位到路段，必須由業務校正）
-    await spShowPicker(_spCoords, _spGeoApprox);
-    if (_spGeoApprox) {
-      _spPoi = []; spRenderPoi();
-      st.textContent = '⚠️ 地址的完整門牌在地圖資料庫查不到，圖釘目前只在該路段上。請在下方地圖把圖釘拖到（或點選）本案實際位置，再按「以圖釘位置查詢周邊」。';
-      return;
-    }
-    // 1) 找出候選地點（快取 → Overpass 三路並行 → Nominatim 備援）
-    let cands = _spPoiCacheGet(_spCoords);
-    if (!cands) {
-      st.textContent = '⏳ 搜尋周邊車站與學校…';
-      const r = await _spOverpass(_spCoords.lat, _spCoords.lng);
-      cands = []; const seen = new Set();
-      const feed = els => (els || []).forEach(e => {
-        const lat = e.lat != null ? e.lat : (e.center && e.center.lat), lng = e.lon != null ? e.lon : (e.center && e.center.lon);
-        if (lat == null || lng == null) return;
-        _spClassify(e.tags || {}).forEach(c => {
-          const key = c.type + '|' + c.name; if (seen.has(key)) return; seen.add(key);
-          cands.push({ type: c.type, name: c.name, lat, lng });
-        });
+    _spCoords = { lat: c.lat, lng: c.lng };
+    const cands = []; const seen = new Map();
+    const feed = (tags, lat, lng) => {
+      if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return;
+      _spClassify(tags).forEach(cl => {
+        const key = cl.type + '|' + cl.name, straight = _spHav(c.lat, c.lng, lat, lng);
+        const old = seen.get(key);
+        if (old) { if (straight < old.straight) { old.lat = lat; old.lng = lng; old.straight = straight; } return; }
+        const o = { type: cl.type, name: cl.name, lat, lng, straight, minor: !!cl.minor };
+        seen.set(key, o); cands.push(o);
       });
-      feed(r.schools); feed(r.transit); feed(r.rail);
-      // 沒資料的類型 → 改用 Nominatim 備援
-      const missing = [];
-      if (!r.schools) missing.push('國小', '國中');
-      if (!r.transit) missing.push('捷運站', '輕軌站');
-      if (!r.rail && !r.transit) missing.push('火車站');
-      if (missing.length) {
-        st.textContent = '⏳ 主要地圖資料服務忙碌，改用備援服務搜尋…';
-        for (const ty of missing) {
-          const got = await _spNomPoi(ty, _spCoords);
-          got.forEach(c => { const key = c.type + '|' + c.name; if (!seen.has(key)) { seen.add(key); cands.push(c); } });
-          await new Promise(res => setTimeout(res, 1100));
-        }
-        if (!cands.length) notes.push('地圖資料服務目前都連不上，請稍後再按一次查詢；也可在下方手動新增。');
-      }
-      // 完整查到才寫入快取（有缺漏就不快取，下次重查）
-      if (r.schools && r.transit && cands.length) _spPoiCacheSet(_spCoords, cands);
+    };
+    const feedNom = rows => (rows || []).forEach(r => feed(_spNomToTags(r), parseFloat(r.lat), parseFloat(r.lon)));
+    const has = ty => cands.some(x => x.type === ty);
+    // 1) 學校：以圖釘為中心約 3.3 公里見方；國小或國中其一沒找到再放大
+    st.textContent = '⏳ 搜尋周邊學校…';
+    let sch = await _spNomArea('[school]', c, 0.03, 1); feedNom(sch);
+    if (sch && (!has('國小') || !has('國中'))) { st.textContent = '⏳ 擴大範圍搜尋學校…'; const s2 = await _spNomArea('[school]', c, 0.06, 1); if (s2) { sch = s2; feedNom(s2); } }
+    // 2) 車站：先查近距離；火車站／捷運／輕軌有缺的再放大到約 11 公里
+    st.textContent = '⏳ 搜尋周邊車站…';
+    let sta = await _spNomArea('[station]', c, 0.03, 1); feedNom(sta);
+    if (sta && (!has('火車站') || !has('捷運站') || !has('輕軌站'))) { st.textContent = '⏳ 擴大範圍搜尋車站…'; const s2 = await _spNomArea('[station]', c, 0.1, 1); if (s2) { sta = s2; feedNom(s2); } }
+    // 3) 備援：搜尋服務連不上（回 null）時才改用 Overpass
+    if (!sch || !sta) {
+      st.textContent = '⏳ 主要地圖資料服務忙碌，改用備援服務搜尋…';
+      const r = await _spOverpass(c.lat, c.lng);
+      const feedOv = els => (els || []).forEach(e => feed(e.tags || {}, e.lat != null ? e.lat : (e.center && e.center.lat), e.lon != null ? e.lon : (e.center && e.center.lon)));
+      if (!sch) feedOv(r.schools);
+      if (!sta) feedOv(r.rail);
+      if ((!sch && !r.schools) || (!sta && !r.rail)) notes.push('部分地圖資料服務目前連不上，結果可能不完整，請稍後再按一次查詢，或在下方手動新增。');
     }
-    cands.forEach(c => { c.straight = _spHav(_spCoords.lat, _spCoords.lng, c.lat, c.lng); });
-    cands.sort((a, b) => a.straight - b.straight);
-    const want = { '火車站': 1, '捷運站': 1, '輕軌站': 1, '國小': 2, '國中': 2 };
-    const picked = [];
-    SP_POI_TYPES.forEach(ty => {
-      cands.filter(c => c.type === ty && c.straight <= (ty === '火車站' ? 9000 : 4500)).slice(0, want[ty]).forEach(c => picked.push(c));
-    });
-    // 2) 步行／開車時間：全部同時查，逾時就改用直線距離估算
+    const picked = _spPickPoi(cands);
+    // 4) 步行／開車時間：全部同時查，逾時就改用直線距離估算
     st.textContent = `⏳ 計算 ${picked.length} 個地點的步行／開車時間…`;
-    const out = await Promise.all(picked.map(async c => {
-      const [w, d] = await Promise.all([_spRoute('foot', _spCoords, c), _spRoute('car', _spCoords, c)]);
-      const meters = w ? w.m : c.straight * 1.25;
+    const out = await Promise.all(picked.map(async p => {
+      const [w, d] = await Promise.all([_spRoute('foot', _spCoords, p), _spRoute('car', _spCoords, p)]);
+      const meters = w ? w.m : p.straight * 1.25;
       return {
-        type: c.type, name: c.name, lat: c.lat, lng: c.lng,
+        type: p.type, name: p.name, lat: p.lat, lng: p.lng,
         dist: Math.round(meters),
         walk: Math.max(1, Math.ceil(w ? w.sec / 60 : meters / 75)),
-        drive: Math.max(1, Math.round(d ? d.sec / 60 : (c.straight * 1.4) / 450 + 1)),
+        drive: Math.max(1, Math.round(d ? d.sec / 60 : (p.straight * 1.4) / 450 + 1)),
         est: !(w && d)
       };
     }));
@@ -17845,15 +17792,15 @@ async function spFetchPoi() {
     await _spRefreshMap();
     spSaveDraft();
     const secs = Math.round((Date.now() - t0) / 1000);
-    st.textContent = (out.length ? `✅ 已整理 ${out.length} 個周邊地點（${secs} 秒）${out.some(o => o.est) ? '，部分時間為直線距離估算' : ''}` : '📭 附近查無符合的車站／學校資料，可在下方手動新增。')
+    st.textContent = (out.length ? `✅ 已依圖釘位置整理 ${out.length} 個最近的周邊地點（${secs} 秒）${out.some(o => o.est) ? '，部分時間為直線距離估算' : ''}；如圖釘位置不對，拖曳後再按一次查詢` : '📭 圖釘附近查無符合的車站／學校資料，可在下方手動新增。')
       + (notes.length ? '　⚠️ ' + notes.join(' ') : '')
-      + (g.manual ? '　（依您確認的圖釘位置計算）' : (g.byName ? '　（已依建案名稱定位，如圖釘不在建案上請拖曳校正後重查）' : '　（如圖釘不在建案上，請拖曳校正後按「以圖釘位置查詢周邊」）'))
       + (_spGoogleMsg ? '　⚠️ ' + _spGoogleMsg : '')
       + (_spMapImg ? '' : '　⚠️ 地圖底圖載入失敗，可改用「自己的地圖截圖」。');
   } catch (e) {
     console.error(e); st.textContent = '⚠️ 查詢失敗：' + e.message;
   } finally { btn.disabled = false; }
 }
+
 function spAddPoi() { _spPoi.push({ type: '國小', name: '', dist: '', walk: '', drive: '', est: false }); spRenderPoi(); spSaveDraft(); }
 function spDelPoi(i) { _spPoi.splice(i, 1); spRenderPoi(); spSaveDraft(); }
 function spPoiSet(i, k, v) { if (_spPoi[i]) { _spPoi[i][k] = v; spSaveDraft(); } }
@@ -17870,7 +17817,7 @@ function spRenderPoi() {
     + rows + `<button class="btn btn-g" style="font-size:12px;margin-top:4px" onclick="spAddPoi()">＋ 新增一列</button>`;
 }
 
-// ── 地圖（OpenStreetMap/CARTO 圖磚拼接；有填 Google Maps API 金鑰則改用 Google 靜態地圖）──
+// ── 地圖（OpenStreetMap 圖磚拼接；有填 Google Maps API 金鑰則改用 Google 靜態地圖）──
 const SP_MAP_W = 666, SP_MAP_H = 469;
 function _spProj(lat, lng, z) {
   const n = 256 * Math.pow(2, z), s = Math.sin(lat * Math.PI / 180);
@@ -17987,40 +17934,66 @@ async function _spRefreshMap() {
   const mp = _spEl('sp-mapprev');
   if (mp) { if (img) { mp.src = img; mp.style.display = 'block'; } else mp.style.display = 'none'; }
 }
-// ── 位置確認／校正：可拖曳、縮放的互動地圖（Leaflet + OpenStreetMap），圖釘就是計算距離的起點 ──
+// ── 本案位置：一進頁面就顯示的互動地圖（Leaflet + OpenStreetMap）。圖釘是唯一的定位依據，距離與時間都由圖釘起算 ──
+const SP_DEFAULT_CENTER = { lat: 22.6273, lng: 120.3014 };   // 尚未定位時的地圖中心（高雄市）
 let _spPicker = null;
-async function spShowPicker(c, approx) {
-  const wrap = _spEl('sp-picker-wrap'); if (!wrap) return;
-  wrap.style.display = 'block';
+let _spPinSet = false;        // 圖釘是否已由使用者放好（拖曳／點選／貼座標／草稿還原）
+function _spPinHint(on) {
+  if (!_spPicker) return;
+  const m = _spPicker.marker;
+  if (on) m.bindTooltip('拖曳我到本案位置', { permanent: true, direction: 'top', offset: [0, -34], className: 'sp-pin-tip' }).openTooltip();
+  else m.unbindTooltip();
+}
+function _spPinMoved() {
+  if (!_spPicker) return;
+  const first = !_spPinSet;
+  _spPinSet = true;
+  const p = _spPicker.marker.getLatLng();
+  _spEl('sp-latlng').value = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+  if (first) _spPinHint(false);
+  const st = _spEl('sp-poi-status'); if (st && !_spPoi.length) st.textContent = '📍 圖釘已定位，按「查詢周邊機能與地圖」即可。';
+  spSaveDraft();
+}
+async function spInitPicker() {
+  const box = _spEl('sp-picker'); if (!box) return;
   try {
     if (typeof _ensureLeafletLoaded === 'function') await _ensureLeafletLoaded();
     if (!window.L) throw new Error('Leaflet 未載入');
-    const box = _spEl('sp-picker');
+    const pin = _spParseLatLng(_spVal('sp-latlng'));
+    const c = pin || (_spCoords && _spParseLatLng(_spCoords.lat + ',' + _spCoords.lng)) || SP_DEFAULT_CENTER;
+    const has = !!(pin || _spCoords);
     if (!_spPicker) {
-      const map = L.map(box, { zoomControl: true }).setView([c.lat, c.lng], approx ? 16 : 17);
+      const map = L.map(box, { zoomControl: true }).setView([c.lat, c.lng], has ? 17 : 12);
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
-      const marker = L.marker([c.lat, c.lng], { draggable: true }).addTo(map);
-      map.on('click', ev => marker.setLatLng(ev.latlng));
+      const marker = L.marker([c.lat, c.lng], { draggable: true, autoPan: true }).addTo(map);
       _spPicker = { map, marker };
-    } else {
-      _spPicker.marker.setLatLng([c.lat, c.lng]);
-      _spPicker.map.setView([c.lat, c.lng], approx ? 16 : 17);
+      _spPinSet = has;
+      marker.on('dragend', _spPinMoved);
+      map.on('click', ev => { marker.setLatLng(ev.latlng); _spPinMoved(); });
+      if (!has) _spPinHint(true);
+    } else if (has && !_spPinSet) {
+      _spPicker.marker.setLatLng([c.lat, c.lng]); _spPicker.map.setView([c.lat, c.lng], 17); _spPinSet = true; _spPinHint(false);
     }
-    setTimeout(() => { try { _spPicker.map.invalidateSize(); _spPicker.map.setView(_spPicker.marker.getLatLng(), approx ? 16 : 17); } catch (e) { /* ignore */ } }, 120);
-    wrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    setTimeout(() => { try { _spPicker.map.invalidateSize(); } catch (e) { /* ignore */ } }, 150);
   } catch (e) {
-    _spEl('sp-picker').innerHTML = '<div style="padding:16px;font-size:12px;color:var(--tx3)">互動地圖載入失敗（網路或套件被擋）。請改在下方「本案座標」欄貼上座標。</div>';
+    box.innerHTML = '<div style="padding:16px;font-size:12px;color:var(--tx3)">互動地圖載入失敗（網路或套件被擋）。請改在下方「本案座標」欄貼上座標（Google 地圖對本案按右鍵即可複製）。</div>';
   }
 }
-function spPickerConfirm() {
-  if (!_spPicker) return;
-  const p = _spPicker.marker.getLatLng();
-  _spEl('sp-latlng').value = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
-  _spLatlngAddr = _spVal('sp-addr');
-  spSaveDraft();
-  spFetchPoi();
+function spPickerReset() {
+  _spPinSet = false;
+  if (_spPicker) { _spPicker.marker.setLatLng([SP_DEFAULT_CENTER.lat, SP_DEFAULT_CENTER.lng]); _spPicker.map.setView([SP_DEFAULT_CENTER.lat, SP_DEFAULT_CENTER.lng], 12); _spPinHint(true); }
 }
-function spLatlngInput() { _spLatlngAddr = _spVal('sp-addr'); spSaveDraft(); }
+// 手動貼上／修改座標欄 → 圖釘跟著移動
+function spLatlngInput() {
+  const p = _spParseLatLng(_spVal('sp-latlng'));
+  if (p && _spPicker) {
+    const first = !_spPinSet; _spPinSet = true;
+    _spPicker.marker.setLatLng([p.lat, p.lng]); _spPicker.map.setView([p.lat, p.lng], 17);
+    if (first) _spPinHint(false);
+  }
+  spSaveDraft();
+}
+
 async function spOnMapFile(inp) {
   const f = inp.files && inp.files[0]; inp.value = '';
   if (!f) return;
