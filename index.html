@@ -3131,10 +3131,12 @@ render();
     </div>
 
     <div class="sp-card">
-      <div class="sp-h">🏘️ 同類物件 <small>依建案名稱、地址、坪數、格局、開價，從公司庫存比對條件相仿的物件（每頁 4 筆，超過自動增頁）</small></div>
+      <div class="sp-h">🏘️ 同類物件 <small>同建案（無建案名稱則同路段）在售、條件相近的物件，每頁 4 筆，超過自動增頁</small></div>
       <div class="sp-btnrow" style="margin-top:0;margin-bottom:10px">
-        <button class="btn btn-p" onclick="spSearchComps()">🔍 依本案自動搜尋</button>
+        <button class="btn btn-p" onclick="spOpenListingSearch('591')">🔎 591 查同建案在售</button>
+        <button class="btn btn-g" onclick="spOpenListingSearch('web')">🌐 網路搜尋在售物件</button>
         <button class="btn btn-g" onclick="spAddComp()">＋ 手動新增</button>
+        <button class="btn btn-g" onclick="spSearchComps()">🏢 從公司庫存帶入</button>
         <span class="sp-status" id="sp-comps-status"></span>
       </div>
       <div id="sp-comps"></div>
@@ -3150,6 +3152,8 @@ render();
       </div>
       <img id="sp-mapprev" alt="地圖預覽">
       <div id="sp-poi-list" style="margin-top:12px"></div>
+      <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">本案座標（選填）</label>
+        <input class="fc" id="sp-latlng" placeholder="例：22.6634,120.2885　（門牌定位不準時，從 Google 地圖複製貼上）" oninput="spSaveDraft()"></div>
       <div class="sp-note">距離與步行／開車時間優先採用道路路網計算，網路服務連不上時改以直線距離換算（PDF 內標示「約」）。「學區」列出的是鄰近國小、國中，實際學區劃分仍以教育局公告為準。每一列都可直接修改文字或刪除。</div>
       <div class="fgp" style="margin-top:10px;max-width:420px"><label class="lbl">Google Maps API 金鑰（選填）</label>
         <input class="fc" id="sp-gkey" placeholder="填入後地圖改用 Google 地圖底圖；留空則用 OpenStreetMap 底圖" oninput="spSaveDraft()"></div>
@@ -17397,6 +17401,7 @@ let _spCoords = null;         // 本案座標 {lat,lng}
 let _spUnitManualFlag = false;
 let _spCompPhotoIdx = -1;
 let _spInited = false;
+let _spGeoApprox = false;
 
 const _spEl = id => document.getElementById(id);
 const _spVal = id => { const e = _spEl(id); return e ? String(e.value || '').trim() : ''; };
@@ -17404,7 +17409,7 @@ const _spNum = v => { const n = parseFloat(String(v == null ? '' : v).replace(/,
 const _spFmt = n => { const x = _spNum(n); return isNaN(x) ? '' : String(parseFloat(x.toFixed(2))); };
 
 // ── 草稿（僅存在本機瀏覽器，照片與地圖圖檔太大不存）──
-const SP_FIELDS = ['sp-name', 'sp-phone', 'sp-case', 'sp-floor', 'sp-addr', 'sp-layout', 'sp-ping', 'sp-park', 'sp-offer', 'sp-unit', 'sp-status', 'sp-gkey'];
+const SP_FIELDS = ['sp-name', 'sp-phone', 'sp-case', 'sp-floor', 'sp-addr', 'sp-layout', 'sp-ping', 'sp-park', 'sp-offer', 'sp-unit', 'sp-status', 'sp-gkey', 'sp-latlng'];
 function spSaveDraft() {
   try {
     const f = {};
@@ -17544,6 +17549,16 @@ function _spParkOf(r) {
   if (!list.length) return '無車位';
   return list.some(p => p && p.type === '機械') ? '機械車位' : '平面車位';
 }
+// 到公開平台查「同建案在售物件」：瀏覽器無法直接讀取各平台資料（對方不開放跨網站存取），因此開啟搜尋頁讓業務挑選後手動加入
+function spOpenListingSearch(which) {
+  const key = _spVal('sp-case') || _spRoad(_spVal('sp-addr')) || _spVal('sp-addr');
+  if (!key) { alert('請先填寫「建案名稱」或「地址」'); return; }
+  const q = encodeURIComponent(key);
+  const url = which === '591' ? `https://sale.591.com.tw/?keywords=${q}`
+    : which === 'sinyi' ? `https://www.google.com/search?q=${encodeURIComponent(key + ' 信義房屋 買屋 在售')}`
+    : `https://www.google.com/search?q=${encodeURIComponent(key + ' 在售 房屋 591 樂居 永慶')}`;
+  window.open(url, '_blank', 'noopener');
+}
 async function spSearchComps() {
   const st = _spEl('sp-comps-status');
   const caseN = _spVal('sp-case'), addr = _spVal('sp-addr');
@@ -17637,6 +17652,45 @@ async function _spRoute(profile, a, b) {
   const r = j && j.routes && j.routes[0];
   return r ? { sec: r.duration, m: r.distance } : null;
 }
+// 地址定位：完整門牌查不到時（OSM 在台灣的門牌資料不全很常見），依序退到「路段」並換備援服務
+function _spRoadOnly(addr) {
+  const m = String(addr || '').match(/^(.*?(?:路|街|大道)(?:[一二三四五六七八九十百0-9]+段)?)/);
+  return m ? m[1] : '';
+}
+const _spT = x => String(x || '').replace(/臺/g, '台');
+function _spCityOf(addr) { const m = String(addr || '').match(/^(.{2,3}[市縣])/); return m ? m[1] : ''; }
+function _spDistOf(addr) { const m = String(addr || '').match(/[市縣](.{1,3}?[區鄉鎮市])/); return m ? m[1] : ''; }
+async function _spNominatim(q, city, dist) {
+  const j = await _spFetchJson('https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=tw&limit=5&accept-language=zh-TW&q=' + encodeURIComponent(q), null, 12000);
+  if (!Array.isArray(j)) return null;
+  // 只接受「地址描述裡確實含有同縣市（與同區）」的結果，避免同名路段配對到別的縣市
+  const ok = j.find(r => { const dn = _spT(r.display_name); return (!city || dn.includes(_spT(city))) && (!dist || dn.includes(_spT(dist))); })
+    || j.find(r => !dist ? false : (!city || _spT(r.display_name).includes(_spT(city))));
+  if (ok) { const lat = parseFloat(ok.lat), lng = parseFloat(ok.lon); if (!isNaN(lat) && !isNaN(lng)) return { lat, lng }; }
+  return null;
+}
+async function _spPhoton(q, city) {
+  const j = await _spFetchJson('https://photon.komoot.io/api/?limit=5&q=' + encodeURIComponent(q), null, 12000);
+  const fs = (j && j.features) || [];
+  const f = fs.find(x => x.geometry && x.geometry.coordinates && (!city || _spT((x.properties || {}).city || (x.properties || {}).state || '').includes(_spT(city))));
+  if (f) return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
+  return null;
+}
+async function _spGeocode(addr) {
+  // 使用者手動貼上的座標（例如從 Google 地圖右鍵複製「22.66,120.29」）優先
+  const m = _spVal('sp-latlng').match(/(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)/);
+  if (m) { const lat = parseFloat(m[1]), lng = parseFloat(m[2]); if (lat > 20 && lat < 27 && lng > 117 && lng < 123) return { coords: { lat, lng }, approx: false, manual: true }; }
+  const city = _spCityOf(addr), dist = _spDistOf(addr);
+  try { const g = await geocodeAddrProgressive(addr, city || undefined); if (g && g.coords) return { coords: g.coords, approx: g.approx }; } catch (e) { /* 換下一個 */ }
+  const n0 = await _spNominatim(addr, city, dist); if (n0) return { coords: n0, approx: false };
+  const road = _spRoadOnly(addr);
+  if (road && road !== addr) {
+    try { const g = await geocodeAddr(road, city || undefined); if (g) return { coords: g, approx: true }; } catch (e) { /* 換下一個 */ }
+    const n1 = await _spNominatim(road, city, dist); if (n1) return { coords: n1, approx: true };
+    const p1 = await _spPhoton(road, city); if (p1) return { coords: p1, approx: true };
+  }
+  return { coords: null, approx: false };
+}
 async function spFetchPoi() {
   const st = _spEl('sp-poi-status'), btn = _spEl('sp-poi-btn');
   const addr = _spVal('sp-addr');
@@ -17644,9 +17698,10 @@ async function spFetchPoi() {
   btn.disabled = true; _spMapUser = false;
   try {
     st.textContent = '⏳ 定位地址中…';
-    const g = await geocodeAddrProgressive(addr);
-    if (!g || !g.coords) { st.textContent = '⚠️ 查不到此地址的座標，請確認地址（需含縣市、區、路名）。'; return; }
+    const g = await _spGeocode(addr);
+    if (!g || !g.coords) { st.textContent = '⚠️ 地址與路名都查不到座標。請確認地址含縣市、區、路名；或在「座標」欄貼上 Google 地圖的座標（地圖上對本案右鍵即可複製）。'; return; }
     _spCoords = { lat: g.coords.lat, lng: g.coords.lng };
+    _spGeoApprox = !!g.approx;
     st.textContent = '⏳ 搜尋周邊車站與學校…';
     const els = await _spOverpass(_spCoords.lat, _spCoords.lng);
     if (!els) { st.textContent = '⚠️ 地圖資料服務暫時連不上，請稍後再試（已定位到本案座標，仍可生成地圖；清單也可手動新增）。'; _spPoi = _spPoi || []; await _spRefreshMap(); spRenderPoi(); spSaveDraft(); return; }
@@ -17686,7 +17741,8 @@ async function spFetchPoi() {
     spRenderPoi();
     await _spRefreshMap();
     spSaveDraft();
-    st.textContent = out.length ? `✅ 已整理 ${out.length} 個周邊地點${out.some(o => o.est) ? '（部分時間為直線距離估算）' : ''}` : '📭 附近查無符合的車站／學校資料，可在下方手動新增。';
+    st.textContent = (out.length ? `✅ 已整理 ${out.length} 個周邊地點${out.some(o => o.est) ? '（部分時間為直線距離估算）' : ''}` : '📭 附近查無符合的車站／學校資料，可在下方手動新增。')
+      + (_spGeoApprox ? '　⚠️ 查不到完整門牌，已定位在該路段（位置為約略值），建議到 Google 地圖複製本案座標貼到「座標」欄後再查一次。' : '');
   } catch (e) {
     console.error(e); st.textContent = '⚠️ 查詢失敗：' + e.message;
   } finally { btn.disabled = false; }
