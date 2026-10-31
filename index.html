@@ -13666,17 +13666,60 @@ async function saveWarSelf(){
     savedAt: new Date().toISOString(),
     savedBy: (window._currentUser && window._currentUser.email) || ''
   };
-  try{
-    await window._firebaseSetDoc(window._firebaseWarSnapshotRef(todayStr, _warMyPerson.id), payload, {merge:true});
-    if(_warMonthCache[ym]){
-      const idx = _warMonthCache[ym].findIndex(s=>s.personId===_warMyPerson.id && s.date===todayStr);
-      if(idx>=0) Object.assign(_warMonthCache[ym][idx], payload); else _warMonthCache[ym].push(payload);
+  // 寫入：若 Firestore 安全規則尚未更新到最新版（例如還不允許員工寫入 A／A+B／R／庫存 或 今日成果欄位），
+  // 會回傳 permission-denied。此時依序退回「較精簡的欄位組合」再試，至少讓今日追蹤／募集／電話數能存進去，
+  // 並明確告知是哪些欄位因規則未更新而沒存到；全部失敗時才做權限自我檢查，顯示具體原因。
+  const ref = window._firebaseWarSnapshotRef(todayStr, _warMyPerson.id);
+  const strip = (obj, keys) => { const o = {...obj}; keys.forEach(k => delete o[k]); return o; };
+  const COUNT_KEYS = ['aCount','abCount','rCount','inventory'];
+  const attempts = [
+    { data: payload, skipped: [] },
+    { data: strip(payload, COUNT_KEYS), skipped: ['A／A+B／R／庫存'] },
+    { data: strip(payload, COUNT_KEYS.concat(['todayNewCase'])), skipped: ['A／A+B／R／庫存', '今日成果'] }
+  ];
+  let saved = null, lastErr = null;
+  for(const a of attempts){
+    try{ await window._firebaseSetDoc(ref, a.data, {merge:true}); saved = a; break; }
+    catch(e){
+      lastErr = e;
+      if(!_warIsPermErr(e)) break;   // 不是權限問題（例如網路斷線）就不再重試
     }
-    closeOv('warself');
-    renderWarReport();
-  }catch(e){
-    alert('⚠️ 儲存失敗：' + e.message);
   }
+  if(!saved){
+    const why = _warIsPermErr(lastErr) ? await _warDiagnoseSelfSave(todayStr) : '';
+    alert('⚠️ 儲存失敗：' + (lastErr && lastErr.message || '') + (why ? '\n\n' + why : ''));
+    return;
+  }
+  if(_warMonthCache[ym]){
+    const idx = _warMonthCache[ym].findIndex(s=>s.personId===_warMyPerson.id && s.date===todayStr);
+    if(idx>=0) Object.assign(_warMonthCache[ym][idx], saved.data); else _warMonthCache[ym].push({...saved.data});
+  }
+  closeOv('warself');
+  renderWarReport();
+  if(saved.skipped.length){
+    alert('✅ 今日追蹤／募集／電話數已儲存。\n\n⚠️ 但「' + saved.skipped.join('、') + '」沒有存到：資料庫的安全規則還是舊版本，尚未允許員工寫入這些欄位。\n請通知系統管理員到 Firebase 主控台部署最新的 firestore.rules，部署後再按一次「填寫我的今日數字」→「儲存」即可補上。');
+  }
+}
+function _warIsPermErr(e){
+  const m = String((e && (e.code || '')) + ' ' + (e && e.message || '')).toLowerCase();
+  return m.includes('permission') || m.includes('insufficient');
+}
+// 權限自我檢查：找出員工本人寫入戰報快照被拒的具體原因（白名單／身份組／名冊綁定），方便幕僚或系統管理員處理
+async function _warDiagnoseSelfSave(todayStr){
+  const uid = window._currentUser && window._currentUser.uid;
+  if(!uid) return '原因：登入狀態已失效，請重新登入後再試。';
+  const reasons = [];
+  try{
+    const a = await window._firebaseGetDoc(window._firebaseAllowedRef(uid));
+    if(!a.exists()) reasons.push('您的帳號不在「白名單（allowed_users）」中，請系統管理員重新核准此帳號。');
+  }catch(e){ /* 讀不到就略過 */ }
+  try{
+    const r = await window._firebaseGetDoc(window._firebaseWarReportRef(_warMyPerson.id));
+    if(!r.exists()) reasons.push('您綁定的業務名冊資料已被刪除，請幕僚重新建立並綁定。');
+    else if((r.data()||{}).linkedUid !== uid) reasons.push('業務名冊上「' + (_warMyPerson.name||'') + '」綁定的已不是您目前登入的帳號，請幕僚重新設定「對應帳號」。');
+  }catch(e){ /* 讀不到就略過 */ }
+  if(reasons.length) return '原因：' + reasons.join('\n');
+  return '帳號白名單與名冊綁定都正常，問題出在資料庫的安全規則：線上的 firestore.rules 還是舊版本，尚未允許員工自行寫入每日戰報。\n請通知系統管理員到 Firebase 主控台 → Firestore Database → 規則，貼上最新的 firestore.rules 後按「發布」。';
 }
 
 // ══════════════════════════════════════════════════════════════════
