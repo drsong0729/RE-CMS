@@ -5432,19 +5432,20 @@ async function setAgentPickerList(prefix, list){
 }
 
 // ─── 上架管道 ─────────────────────────────────────────────────────
-// 固定 8 個管道，順序固定（列表顯示與編輯視窗都依此順序）；每個管道各自標記已上架／未上架，
+// 固定 7 個管道（「樂居」已移除），順序固定（列表顯示與編輯視窗都依此順序）；每個管道各自標記已上架／未上架，
 // 未上架時可填寫原因。狀態存在委託文件的 listingChannels 欄位：{ [key]: {listed, reason} }
 const LISTING_CHANNELS = [
   {key:'fb',      label:'日勝臉書'},
   {key:'website', label:'日勝官網'},
   {key:'591',     label:'591'},
-  {key:'leju',    label:'樂居'},
   {key:'aihouse', label:'愛屋網'},
   {key:'living',  label:'住商官網'},
   {key:'cloud',   label:'雲端'},
   {key:'lineGroup', label:'LINE群組'}
 ];
 let _listingChannelsState = {}; // 編輯視窗目前的上架管道狀態：{ [key]: {listed:boolean, reason:string} }
+// 已不在清單上的舊管道資料（例如已移除的「樂居」）：不顯示、不編輯，但儲存時原樣保留，避免動到既有資料
+let _listingChannelsHidden = {};
 
 // 新增全新委託時的預設：全部未上架（需使用者自行確認並勾選已上架的管道）
 function _defaultListingChannelsState(){
@@ -5456,6 +5457,10 @@ function _defaultListingChannelsState(){
 // 此功能上線前建立）皆傳 null，會用全未上架的預設，需使用者自行編輯更新；若已有實際存過的資料，則傳入該資料本身
 function setListingChannelsState(data){
   const merged = { ..._defaultListingChannelsState() }; // 保底骨架（全未上架），data 沒提供的欄位維持這個預設
+  _listingChannelsHidden = {};
+  if(data && typeof data === 'object'){
+    Object.keys(data).forEach(k=>{ if(!LISTING_CHANNELS.some(c=>c.key===k)) _listingChannelsHidden[k] = data[k]; });
+  }
   LISTING_CHANNELS.forEach(c=>{
     const v = data && data[c.key];
     if(v) merged[c.key] = { listed: typeof v.listed==='boolean' ? v.listed : true, reason: v.reason || '', expiry: v.expiry || '' };
@@ -5465,7 +5470,7 @@ function setListingChannelsState(data){
 }
 // 儲存時呼叫：從畫面上目前的勾選狀態讀出乾淨物件；591 已上架時額外讀取到期日
 function getListingChannelsState(){
-  const out = {};
+  const out = { ..._listingChannelsHidden }; // 已移除管道的舊資料原樣帶回，不會因為這次儲存而消失
   LISTING_CHANNELS.forEach(c=>{
     const chk = document.getElementById('ch-'+c.key+'-listed');
     const reasonEl = document.getElementById('ch-'+c.key+'-reason');
@@ -11612,17 +11617,17 @@ tr{page-break-inside:avoid}
 .td-addr{text-align:left;padding-left:5px!important;white-space:normal}
 .grp-row td{background:#0f519b;color:#fff;font-weight:800;text-align:left;padding-left:6px!important;font-size:11px}
 `;
-const _INV_PRINT_COLGROUP = `<col style="width:6%"><col style="width:4%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:5%"><col style="width:7%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:3%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%">`;
-const _INV_PRINT_THEAD = `<tr><th>業務</th><th>類別</th><th>委託編號</th><th>案名</th><th>建案名稱</th><th>屋主</th><th>地址</th><th>總價(萬)</th><th>底價(萬)</th><th>斡旋價(萬)</th><th>單價(萬/坪)</th><th>坪數</th><th>委託到期</th><th>日勝臉書</th><th>日勝官網</th><th>591</th><th>樂居</th><th>愛屋網</th><th>住商官網</th><th>雲端</th><th>LINE群組</th></tr>`;
+const _INV_PRINT_COLGROUP = `<col style="width:6%"><col style="width:4%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:5%"><col style="width:12%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:3%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%">`;
+const _INV_PRINT_THEAD = `<tr><th>業務</th><th>類別</th><th>委託編號</th><th>案名</th><th>建案名稱</th><th>屋主</th><th>地址</th><th>總價(萬)</th><th>底價(萬)</th><th>斡旋價(萬)</th><th>單價(萬/坪)</th><th>坪數</th><th>委託到期</th><th>日勝臉書</th><th>日勝官網</th><th>591</th><th>愛屋網</th><th>住商官網</th><th>雲端</th><th>LINE群組</th></tr>`;
 
 function _invPrintRowsHtml(groups){
   return Object.entries(groups).map(([agentUid,g])=>{
     const displayName = resolveRosterName(agentUid, g.agentName);
-    const grpRow = `<tr class="grp-row"><td colspan="21">👤 ${escH(displayName)}（${g.items.length} 筆委託）</td></tr>`;
+    const grpRow = `<tr class="grp-row"><td colspan="20">👤 ${escH(displayName)}（${g.items.length} 筆委託）</td></tr>`;
     const itemRows = g.items.map(r=>{
       const addr = fullAddr(r.propCity,r.propDist,r.propAddr);
       const ownLabel = r.owners&&r.owners.length ? r.owners.map(o=>o.name).join('、') : (r.ownerName||'—');
-      // 上架管道：沒存過資料的舊委託視為皆未上架（跟畫面上卡片顯示的預設一致），列印時仍完整列出全部 7 欄；
+      // 上架管道：沒存過資料的舊委託視為皆未上架（跟畫面上卡片顯示的預設一致），列印時仍完整列出全部管道欄位；
       // 591 若有勾選已上架且填了到期日，欄位內會多印一行到期日（其餘管道沒有這個欄位）
       const chData = r.listingChannels || _defaultListingChannelsState();
       const channelCells = LISTING_CHANNELS.map(c => {
