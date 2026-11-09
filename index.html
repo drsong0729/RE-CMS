@@ -5432,19 +5432,18 @@ async function setAgentPickerList(prefix, list){
 }
 
 // ─── 上架管道 ─────────────────────────────────────────────────────
-// 固定 7 個管道（「樂居」已移除），順序固定（列表顯示與編輯視窗都依此順序）；每個管道各自標記已上架／未上架，
+// 固定 6 個管道（「樂居」「住商官網」已移除），順序固定（列表顯示與編輯視窗都依此順序）；每個管道各自標記已上架／未上架，
 // 未上架時可填寫原因。狀態存在委託文件的 listingChannels 欄位：{ [key]: {listed, reason} }
 const LISTING_CHANNELS = [
   {key:'fb',      label:'日勝臉書'},
   {key:'website', label:'日勝官網'},
   {key:'591',     label:'591'},
   {key:'aihouse', label:'愛屋網'},
-  {key:'living',  label:'住商官網'},
   {key:'cloud',   label:'雲端'},
   {key:'lineGroup', label:'LINE群組'}
 ];
 let _listingChannelsState = {}; // 編輯視窗目前的上架管道狀態：{ [key]: {listed:boolean, reason:string} }
-// 已不在清單上的舊管道資料（例如已移除的「樂居」）：不顯示、不編輯，但儲存時原樣保留，避免動到既有資料
+// 已不在清單上的舊管道資料（例如已移除的「樂居」「住商官網」）：不顯示、不編輯，但儲存時原樣保留，避免動到既有資料
 let _listingChannelsHidden = {};
 
 // 新增全新委託時的預設：全部未上架（需使用者自行確認並勾選已上架的管道）
@@ -11617,13 +11616,13 @@ tr{page-break-inside:avoid}
 .td-addr{text-align:left;padding-left:5px!important;white-space:normal}
 .grp-row td{background:#0f519b;color:#fff;font-weight:800;text-align:left;padding-left:6px!important;font-size:11px}
 `;
-const _INV_PRINT_COLGROUP = `<col style="width:6%"><col style="width:4%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:5%"><col style="width:12%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:3%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%">`;
-const _INV_PRINT_THEAD = `<tr><th>業務</th><th>類別</th><th>委託編號</th><th>案名</th><th>建案名稱</th><th>屋主</th><th>地址</th><th>總價(萬)</th><th>底價(萬)</th><th>斡旋價(萬)</th><th>單價(萬/坪)</th><th>坪數</th><th>委託到期</th><th>日勝臉書</th><th>日勝官網</th><th>591</th><th>愛屋網</th><th>住商官網</th><th>雲端</th><th>LINE群組</th></tr>`;
+const _INV_PRINT_COLGROUP = `<col style="width:6%"><col style="width:4%"><col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:5%"><col style="width:13%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:3%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%">`;
+const _INV_PRINT_THEAD = `<tr><th>業務</th><th>類別</th><th>委託編號</th><th>案名</th><th>建案名稱</th><th>屋主</th><th>地址</th><th>總價(萬)</th><th>底價(萬)</th><th>斡旋價(萬)</th><th>單價(萬/坪)</th><th>坪數</th><th>委託到期</th><th>日勝臉書</th><th>日勝官網</th><th>591</th><th>愛屋網</th><th>雲端</th><th>LINE群組</th></tr>`;
 
 function _invPrintRowsHtml(groups){
   return Object.entries(groups).map(([agentUid,g])=>{
     const displayName = resolveRosterName(agentUid, g.agentName);
-    const grpRow = `<tr class="grp-row"><td colspan="20">👤 ${escH(displayName)}（${g.items.length} 筆委託）</td></tr>`;
+    const grpRow = `<tr class="grp-row"><td colspan="19">👤 ${escH(displayName)}（${g.items.length} 筆委託）</td></tr>`;
     const itemRows = g.items.map(r=>{
       const addr = fullAddr(r.propCity,r.propDist,r.propAddr);
       const ownLabel = r.owners&&r.owners.length ? r.owners.map(o=>o.name).join('、') : (r.ownerName||'—');
