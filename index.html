@@ -11616,7 +11616,7 @@ tr{page-break-inside:avoid}
 .td-addr{text-align:left;padding-left:5px!important;white-space:normal}
 .grp-row td{background:#0f519b;color:#fff;font-weight:800;text-align:left;padding-left:6px!important;font-size:11px}
 `;
-const _INV_PRINT_COLGROUP = `<col style="width:6%"><col style="width:4%"><col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:5%"><col style="width:13%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:3%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%">`;
+const _INV_PRINT_COLGROUP = `<col style="width:6%"><col style="width:4%"><col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:5%"><col style="width:10%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:3%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:8%">`;
 const _INV_PRINT_THEAD = `<tr><th>業務</th><th>類別</th><th>委託編號</th><th>案名</th><th>建案名稱</th><th>屋主</th><th>地址</th><th>總價(萬)</th><th>底價(萬)</th><th>斡旋價(萬)</th><th>單價(萬/坪)</th><th>坪數</th><th>委託到期</th><th>日勝臉書</th><th>日勝官網</th><th>591</th><th>愛屋網</th><th>雲端</th><th>LINE群組</th></tr>`;
 
 function _invPrintRowsHtml(groups){
@@ -11634,6 +11634,10 @@ function _invPrintRowsHtml(groups){
         const listed = !!(st && st.listed);
         if(c.key === '591' && listed && st.expiry){
           return `<td>有<br><span style="font-size:9px">到期${escH(st.expiry)}</span></td>`;
+        }
+        // LINE群組：未上架時，除了「無」之外一併印出未完成原因（其他管道維持只顯示有／無）
+        if(c.key === 'lineGroup' && !listed && st && (st.reason||'').trim()){
+          return `<td>無<br><span style="font-size:9px;color:#c0392b">${escH(st.reason.trim())}</span></td>`;
         }
         return `<td>${listed ? '有' : '無'}</td>`;
       }).join('');
