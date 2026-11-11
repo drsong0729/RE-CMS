@@ -3100,11 +3100,9 @@ render();
   <div class="sp-wrap">
 
     <div class="sp-card">
-      <div class="sp-h">👤 業務資訊 <small>顯示於封面右下角，下次開啟會記住</small></div>
-      <div class="sp-g">
-        <div class="fgp"><label class="lbl">姓名</label><input class="fc" id="sp-name" placeholder="例：吳松儒Ryan" oninput="spSaveDraft()"></div>
-        <div class="fgp"><label class="lbl">電話</label><input class="fc" id="sp-phone" type="tel" placeholder="例：0975-711-267" oninput="spSaveDraft()"></div>
-      </div>
+      <div class="sp-h">👤 業務資訊 <small>顯示於封面右下角，可新增多位業務（最多 4 位），下次開啟會記住</small></div>
+      <div id="sp-agents"></div>
+      <button class="btn btn-g" id="sp-agent-add" style="font-size:12px;margin-top:2px" onclick="spAddAgent()">＋ 新增業務</button>
     </div>
 
     <div class="sp-card">
@@ -11616,7 +11614,7 @@ tr{page-break-inside:avoid}
 .td-addr{text-align:left;padding-left:5px!important;white-space:normal}
 .grp-row td{background:#0f519b;color:#fff;font-weight:800;text-align:left;padding-left:6px!important;font-size:11px}
 `;
-const _INV_PRINT_COLGROUP = `<col style="width:6%"><col style="width:4%"><col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:5%"><col style="width:10%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:3%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:8%">`;
+const _INV_PRINT_COLGROUP = `<col style="width:6%"><col style="width:4%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:9%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:3%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%">`;
 const _INV_PRINT_THEAD = `<tr><th>業務</th><th>類別</th><th>委託編號</th><th>案名</th><th>建案名稱</th><th>屋主</th><th>地址</th><th>總價(萬)</th><th>底價(萬)</th><th>斡旋價(萬)</th><th>單價(萬/坪)</th><th>坪數</th><th>委託到期</th><th>日勝臉書</th><th>日勝官網</th><th>591</th><th>愛屋網</th><th>雲端</th><th>LINE群組</th></tr>`;
 
 function _invPrintRowsHtml(groups){
@@ -11635,8 +11633,8 @@ function _invPrintRowsHtml(groups){
         if(c.key === '591' && listed && st.expiry){
           return `<td>有<br><span style="font-size:9px">到期${escH(st.expiry)}</span></td>`;
         }
-        // LINE群組：未上架時，除了「無」之外一併印出未完成原因（其他管道維持只顯示有／無）
-        if(c.key === 'lineGroup' && !listed && st && (st.reason||'').trim()){
+        // 每個管道未上架時，除了「無」之外一併印出未完成原因（沒填原因就只印「無」）
+        if(!listed && st && (st.reason||'').trim()){
           return `<td>無<br><span style="font-size:9px;color:#c0392b">${escH(st.reason.trim())}</span></td>`;
         }
         return `<td>${listed ? '有' : '無'}</td>`;
@@ -17504,13 +17502,13 @@ const _spNum = v => { const n = parseFloat(String(v == null ? '' : v).replace(/,
 const _spFmt = n => { const x = _spNum(n); return isNaN(x) ? '' : String(parseFloat(x.toFixed(2))); };
 
 // ── 草稿（僅存在本機瀏覽器，照片與地圖圖檔太大不存）──
-const SP_FIELDS = ['sp-name', 'sp-phone', 'sp-case', 'sp-floor', 'sp-addr', 'sp-layout', 'sp-ping', 'sp-park', 'sp-offer', 'sp-unit', 'sp-status', 'sp-gkey', 'sp-latlng'];
+const SP_FIELDS = ['sp-case', 'sp-floor', 'sp-addr', 'sp-layout', 'sp-ping', 'sp-park', 'sp-offer', 'sp-unit', 'sp-status', 'sp-gkey', 'sp-latlng'];
 function spSaveDraft() {
   try {
     const f = {};
     SP_FIELDS.forEach(id => { f[id] = _spEl(id) ? _spEl(id).value : ''; });
     const comps = _spComps.map(c => Object.assign({}, c, { photo: (c.photo && /^data:/.test(c.photo)) ? '' : (c.photo || '') }));
-    localStorage.setItem(SP_LS_KEY, JSON.stringify({ f, comps, poi: _spPoi, coords: _spCoords, unitManual: _spUnitManualFlag }));
+    localStorage.setItem(SP_LS_KEY, JSON.stringify({ f, agents: _spAgents, comps, poi: _spPoi, coords: _spCoords, unitManual: _spUnitManualFlag }));
   } catch (e) { /* 無痕模式等情況存不了，不影響使用 */ }
 }
 function _spLoadDraft() {
@@ -17526,29 +17524,57 @@ function initSalesPlanPage() {
       _spPoi = Array.isArray(d.poi) ? d.poi : [];
       _spCoords = d.coords || null;
       _spUnitManualFlag = !!d.unitManual;
+      if (Array.isArray(d.agents) && d.agents.length) _spAgents = d.agents.map(a => ({ name: String((a && a.name) || ''), phone: String((a && a.phone) || '') })).slice(0, SP_MAX_AGENTS);
+      else _spAgents = [{ name: d.f['sp-name'] || '', phone: d.f['sp-phone'] || '' }];   // 舊版草稿（只有一位業務）
     }
-    // 姓名／電話：沒有草稿時，沿用「生成廣告」記住的業務資訊，再不然帶入登入者名稱
+    // 第一位業務的姓名／電話：沒有草稿時，沿用「生成廣告」記住的業務資訊，再不然帶入登入者名稱
     let ag = {};
     try { ag = (typeof _flyerLoadAgentInfo === 'function') ? _flyerLoadAgentInfo() : {}; } catch (e) { ag = {}; }
-    if (!_spVal('sp-name')) _spEl('sp-name').value = ag.name || window._myCustomName || window._myGoogleName || '';
-    if (!_spVal('sp-phone')) _spEl('sp-phone').value = ag.phone || '';
+    if (!_spAgents.length) _spAgents = [{ name: '', phone: '' }];
+    if (!_spAgents[0].name) _spAgents[0].name = ag.name || window._myCustomName || window._myGoogleName || '';
+    if (!_spAgents[0].phone) _spAgents[0].phone = ag.phone || '';
   }
+  spRenderAgents();
   spRenderComps();
   spRenderPoi();
   spRenderPhoto();
   spInitPicker();   // 一進頁面就顯示地圖與圖釘
 }
 function spResetAll() {
-  if (!confirm('確定要清空本頁所有欄位（含同類物件與周邊機能）嗎？\n（姓名、電話會保留）')) return;
-  const keep = { name: _spVal('sp-name'), phone: _spVal('sp-phone'), key: _spVal('sp-gkey') };
+  if (!confirm('確定要清空本頁所有欄位（含同類物件與周邊機能）嗎？\n（業務資訊會保留）')) return;
+  const keep = { key: _spVal('sp-gkey') };
   SP_FIELDS.forEach(id => { const e = _spEl(id); if (!e) return; if (e.tagName === 'SELECT') e.selectedIndex = 0; else e.value = ''; });
-  _spEl('sp-name').value = keep.name; _spEl('sp-phone').value = keep.phone; _spEl('sp-gkey').value = keep.key;
+  _spEl('sp-gkey').value = keep.key;
   _spPhoto = null; _spMapImg = null; _spMapUser = false; _spComps = []; _spPoi = []; _spCoords = null; _spUnitManualFlag = false;
   spPickerReset();
   const mp = _spEl('sp-mapprev'); if (mp) mp.style.display = 'none';
   ['sp-comps-status', 'sp-poi-status', 'sp-gen-status'].forEach(id => { if (_spEl(id)) _spEl(id).textContent = ''; });
   spRenderComps(); spRenderPoi(); spRenderPhoto(); spSaveDraft();
 }
+
+// ── 業務資訊（可多位，依序顯示在封面右下角）──
+const SP_MAX_AGENTS = 4;
+let _spAgents = [{ name: '', phone: '' }];
+function spRenderAgents() {
+  const box = _spEl('sp-agents'); if (!box) return;
+  if (!_spAgents.length) _spAgents = [{ name: '', phone: '' }];
+  box.innerHTML = _spAgents.map((a, i) => `<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap">
+      <div class="fgp" style="flex:1 1 180px;margin-bottom:0"><label class="lbl">${_spAgents.length > 1 ? '業務 ' + (i + 1) + '　' : ''}姓名</label>
+        <input class="fc" id="sp-ag-name-${i}" value="${escAttr(a.name || '')}" placeholder="例：吳松儒Ryan" oninput="spAgentSet(${i},'name',this.value)"></div>
+      <div class="fgp" style="flex:1 1 180px;margin-bottom:0"><label class="lbl">電話</label>
+        <input class="fc" id="sp-ag-phone-${i}" type="tel" value="${escAttr(a.phone || '')}" placeholder="例：0975-711-267" oninput="spAgentSet(${i},'phone',this.value)"></div>
+      ${i > 0 ? `<button class="btn btn-g" style="font-size:12px;padding:6px 10px;color:var(--red)" title="刪除這位業務" onclick="spDelAgent(${i})">✕ 刪除</button>` : '<div style="width:68px"></div>'}
+    </div>`).join('');
+  const add = _spEl('sp-agent-add');
+  if (add) { add.disabled = _spAgents.length >= SP_MAX_AGENTS; add.textContent = _spAgents.length >= SP_MAX_AGENTS ? `已達上限（${SP_MAX_AGENTS} 位）` : '＋ 新增業務'; }
+}
+function spAgentSet(i, k, v) { if (_spAgents[i]) { _spAgents[i][k] = v; spSaveDraft(); } }
+function spAddAgent() {
+  if (_spAgents.length >= SP_MAX_AGENTS) return;
+  _spAgents.push({ name: '', phone: '' }); spRenderAgents(); spSaveDraft();
+  const el = _spEl('sp-ag-name-' + (_spAgents.length - 1)); if (el) el.focus();
+}
+function spDelAgent(i) { if (i <= 0 || !_spAgents[i]) return; _spAgents.splice(i, 1); spRenderAgents(); spSaveDraft(); }
 
 // ── 單價自動計算 ──
 function spCalcUnit() {
@@ -18153,14 +18179,17 @@ function _spFloorAddr(f) { f = String(f || '').trim(); const m = f.match(/^(\d+)
 function _spPageCover(d) {
   const sub = [d.caseName, _spFloorCover(d.floor)].filter(Boolean).join(' ');
   const fs = Math.max(26, Math.min(44, 760 / Math.max(1, _spTextWidthUnits(sub))));
-  const contact = [d.name, d.phone].filter(Boolean).join('  ');
+  // 業務資訊：每位一行「姓名  電話」，靠右對齊、由下往上排（最後一行底部固定在原本位置）；4 位時字級略縮
+  const lines = (d.agents || []).map(a => [a.name, a.phone].filter(Boolean).join('  ')).filter(Boolean);
+  const cfs = lines.length >= 4 ? 30 : 36, clh = lines.length >= 4 ? 40 : 48;
+  const ctop = 866 - lines.length * clh;
   return `<div class="sp-pg">`
     + _spA(`left:0;top:0;width:${SP_W}px;height:487px;background:${SP_BLUE}`, '')
     + _spBg('left:527px;top:135px;width:633px;height:195px', SP_ASSETS.logo, '100% 100%')
     + _spA('left:92px;top:532px;font-size:88px;line-height:120px;font-weight:700;white-space:nowrap', '銷售企劃書')
     + _spA('left:556px;top:603px;width:441px;height:5px;background:' + SP_BLUE, '')
     + (sub ? _spA(`left:92px;top:${650 + (44 - fs) / 2}px;font-size:${fs}px;line-height:60px;white-space:nowrap;font-weight:400`, escH(sub)) : '')
-    + (contact ? _spA('right:62px;top:818px;font-size:36px;line-height:48px;font-weight:700;white-space:pre;text-align:right', escH(contact)) : '')
+    + (lines.length ? _spA(`right:62px;top:${ctop}px;font-size:${cfs}px;line-height:${clh}px;font-weight:700;white-space:pre;text-align:right`, lines.map(escH).join('\n')) : '')
     + `</div>`;
 }
 function _spPageAbout() {
@@ -18347,7 +18376,8 @@ function _spLoadScript(src, integrity) {
 }
 function _spReadForm() {
   return {
-    name: _spVal('sp-name'), phone: _spVal('sp-phone'), caseName: _spVal('sp-case'), floor: _spVal('sp-floor'), addr: _spVal('sp-addr'),
+    agents: _spAgents.map(a => ({ name: String(a.name || '').trim(), phone: String(a.phone || '').trim() })).filter(a => a.name || a.phone),
+    caseName: _spVal('sp-case'), floor: _spVal('sp-floor'), addr: _spVal('sp-addr'),
     layout: _spVal('sp-layout'), ping: _spVal('sp-ping'), park: _spVal('sp-park'), offer: _spVal('sp-offer'), unit: _spVal('sp-unit'), status: _spVal('sp-status'),
     photo: _spPhoto, poi: _spPoi
   };
