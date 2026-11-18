@@ -2950,7 +2950,7 @@ render();
     </div>
   </div>
   <div style="font-size:12px;color:var(--tx3);padding:0 16px 10px;line-height:1.6">
-    💡 點「✏️ 編輯排休表」後，點擊表格中任一格即可設定當天狀態：<span style="color:var(--tx2);font-weight:700">休</span>＝公休、<span style="color:#c05621;font-weight:700">事</span>＝事假、<span style="color:#1a5fc8;font-weight:700">特</span>＝特休、<span style="color:#c0182a;font-weight:700">病</span>＝病假、<span style="color:var(--gld);font-weight:700">補</span>＝補休，未標記視為上班。右側「應上／實上／請假／公休」會依每天標記自動加總。每月 1 日與每週一為重要集會日，欄位標題會以淺色提醒。
+    💡 點「✏️ 編輯排休表」後，點擊表格中任一格即可設定當天狀態：<span style="color:var(--tx2);font-weight:700">休</span>＝公休、<span style="color:#c05621;font-weight:700">事</span>＝事假、<span style="color:#1a5fc8;font-weight:700">特</span>＝特休、<span style="color:#c0182a;font-weight:700">病</span>＝病假、<span style="color:var(--gld);font-weight:700">補</span>＝補休、<span style="color:#1f8a4c;font-weight:700">公</span>＝公假，未標記視為上班。右側「應上／實上／請假／公休」會依每天標記自動加總。每月 1 日與每週一為重要集會日，欄位標題會以淺色提醒。
   </div>
   <div id="dr-updated" style="font-size:11px;color:var(--tx3);padding:0 16px 8px"></div>
 
@@ -3124,7 +3124,7 @@ render();
           <div class="fgp"><label class="lbl">開價（萬）</label><input class="fc" id="sp-offer" type="number" step="any" placeholder="例：1799" oninput="spCalcUnit();spSaveDraft()"></div>
           <div class="fgp"><label class="lbl">單價（萬/坪）<span style="font-weight:400;color:var(--tx3)">　自動計算，可手動改</span></label><input class="fc" id="sp-unit" type="number" step="any" placeholder="例：48.6" oninput="spUnitManual();spSaveDraft()"></div>
           <div class="fgp"><label class="lbl">現況</label>
-            <select class="fc" id="sp-status" onchange="spSaveDraft()"><option value="預售">預售</option><option value="閒置">閒置</option><option value="自用">自用</option><option value="租客">租客</option></select></div>
+            <select class="fc" id="sp-status" onchange="spSaveDraft()"><option value="預售">預售</option><option value="閒置">閒置</option><option value="空屋">空屋</option><option value="自用">自用</option><option value="租客">租客</option></select></div>
         </div>
       </div>
     </div>
@@ -13756,6 +13756,7 @@ const DUTY_STATUS = {
   'annual':  { label:'特休', short:'特', color:'#1a5fc8',    bg:'var(--blul)' },
   'sick':    { label:'病假', short:'病', color:'#c0182a',    bg:'var(--redl)' },
   'comp':    { label:'補休', short:'補', color:'var(--gld)', bg:'var(--gldl)' },
+  'official':{ label:'公假', short:'公', color:'#1f8a4c',    bg:'var(--grnl)' },
   'notarrived': { label:'未報到', short:'未', color:'var(--pur)', bg:'var(--purl)' }
 };
 
@@ -13925,7 +13926,7 @@ function _dutyRosterComputeRows(){
         am = norm.am; pm = norm.pm;
         [am, pm].forEach(code=>{
           if(code==='off') offCnt += 0.5;
-          else if(code==='personal' || code==='annual' || code==='sick' || code==='comp' || code==='notarrived') leaveCnt += 0.5;
+          else if(code==='personal' || code==='annual' || code==='sick' || code==='comp' || code==='official' || code==='notarrived') leaveCnt += 0.5;
         });
       }
       const stAm = DUTY_STATUS[am] || DUTY_STATUS[''];
@@ -14059,6 +14060,7 @@ function _renderDutyCellPicker(){
     { code:'annual',   label:'🌴 特休' },
     { code:'sick',     label:'🤒 病假' },
     { code:'comp',     label:'🔁 補休' },
+    { code:'official', label:'🏛️ 公假' },
     { code:'notarrived', label:'❓ 未報到' }
   ];
   const portionHtml = `<div style="display:flex;gap:3px;padding:2px 2px 6px;border-bottom:1px solid var(--bdr);margin-bottom:4px">` +
@@ -14071,7 +14073,7 @@ function _renderDutyCellPicker(){
   ).join('');
   picker.innerHTML = portionHtml + statusHtml;
   picker.style.display = 'flex';
-  const pw = 154, ph = 250;
+  const pw = 154, ph = 280;
   let left = rect.left;
   let top = rect.bottom + 4;
   if(left + pw > window.innerWidth) left = window.innerWidth - pw - 8;
@@ -14167,7 +14169,7 @@ function renderDutyRosterMobile(){
       am = norm.am; pm = norm.pm;
       [am, pm].forEach(code=>{
         if(code==='off') offCnt += 0.5;
-        else if(code==='personal' || code==='annual' || code==='sick' || code==='comp' || code==='notarrived') leaveCnt += 0.5;
+        else if(code==='personal' || code==='annual' || code==='sick' || code==='comp' || code==='official' || code==='notarrived') leaveCnt += 0.5;
       });
     }
     const stAm = DUTY_STATUS[am] || DUTY_STATUS[''];
@@ -14832,6 +14834,9 @@ let _rdRoster = [];        // 沿用出勤排休表人員名冊
 let _rdOfficerData = {};   // { weekKey('YYYY-MM-DD'): personId }
 let _rdCleaningData = {};  // { tasks: { taskKey: { am:[personId,...], pm:[personId,...] } } }
 let _rdCustomTasks = [];   // 使用者自訂新增的清潔項目：[{key,label,am,pm}]，不分月份，套用到每個月的清潔分工表
+let _rdHiddenBuiltins = [];   // 已刪除（隱藏）的內建預設項目 key，與自訂項目存在同一份文件；可隨時還原
+const RD_POTWASH_KEY = 'potwash';   // 「17點洗花盆」固定列（全體人員）的 key
+const RD_POTWASH_LABEL = '17點洗花盆(每月一、三週的禮拜一)';
 let _rdLoadError = null;
 
 const RD_CLEAN_TASKS = [
@@ -14904,15 +14909,27 @@ async function initRosterDutyPage(){
 async function rdLoadCustomCleanTasks(){
   try{
     const snap = await window._firebaseGetDoc(window._firebaseRosterCleanTasksRef());
-    _rdCustomTasks = snap.exists() ? ((snap.data()||{}).items || []) : [];
+    const data = snap.exists() ? (snap.data()||{}) : {};
+    _rdCustomTasks = data.items || [];
+    _rdHiddenBuiltins = Array.isArray(data.hiddenBuiltins) ? data.hiddenBuiltins : [];
   }catch(e){
     console.warn('輪值表：讀取自訂清潔項目失敗', e);
     _rdCustomTasks = [];
+    _rdHiddenBuiltins = [];
   }
 }
-// 內建固定清潔項目 + 使用者自訂新增的項目，合併後的完整清單（顯示順序＝內建在前、自訂在後）
+// 內建固定清潔項目（排除已刪除的）+ 使用者自訂新增的項目，合併後的完整清單（顯示順序＝內建在前、自訂在後）
 function _rdAllCleanTasks(){
-  return RD_CLEAN_TASKS.concat(_rdCustomTasks);
+  return RD_CLEAN_TASKS.filter(t=>!_rdHiddenBuiltins.includes(t.key)).concat(_rdCustomTasks);
+}
+function _rdPotwashVisible(){ return !_rdHiddenBuiltins.includes(RD_POTWASH_KEY); }
+// 寫入清潔項目設定文件（自訂項目＋已刪除的內建項目，兩者一定要一起寫，避免互相覆蓋）
+async function _rdSaveCleanMeta(items, hidden){
+  await window._firebaseSetDoc(window._firebaseRosterCleanTasksRef(), {
+    items, hiddenBuiltins: hidden,
+    updatedAt: new Date().toISOString(),
+    updatedBy: (window._currentUser && window._currentUser.email) || ''
+  }, {merge:false});
 }
 
 async function _rdLoadRoster(){
@@ -15050,11 +15067,16 @@ function renderRosterDutyCleaning(){
   let rows = _rdAllCleanTasks().map(t=>{
     const amCell = t.am ? _rdCleanCellHtml(t.key, 'am', canEdit) : '<td style="text-align:center;color:var(--tx3)">—</td>';
     const pmCell = t.pm ? _rdCleanCellHtml(t.key, 'pm', canEdit) : '<td style="text-align:center;color:var(--tx3)">—</td>';
-    // 自訂新增的項目才顯示刪除按鈕（內建固定項目不可刪除）
-    const delBtn = (t.custom && canEdit) ? `<span title="刪除此項目" style="cursor:pointer;color:var(--red);margin-left:6px;font-size:12px" onclick="rdDeleteCustomCleanTask('${t.key}')">✕</span>` : '';
-    return `<tr><td style="font-weight:600">${escH(t.label)}${delBtn}</td>${amCell}${pmCell}</tr>`;
+    return `<tr><td style="font-weight:600">${escH(t.label)}${_rdCleanDelBtn(t.key, canEdit)}</td>${amCell}${pmCell}</tr>`;
   }).join('');
-  rows += `<tr><td style="font-weight:600">17點洗花盆(每月一、三週的禮拜一)</td><td style="text-align:center;color:var(--tx3)">—</td><td style="font-weight:700;color:var(--acc)">全體人員</td></tr>`;
+  if(_rdPotwashVisible()) rows += `<tr><td style="font-weight:600">${RD_POTWASH_LABEL}${_rdCleanDelBtn(RD_POTWASH_KEY, canEdit)}</td><td style="text-align:center;color:var(--tx3)">—</td><td style="font-weight:700;color:var(--acc)">全體人員</td></tr>`;
+  // 已刪除的預設項目：編輯者可在表格最下方一鍵還原（避免誤刪後找不回來）
+  const hiddenList = [...RD_CLEAN_TASKS.filter(t=>_rdHiddenBuiltins.includes(t.key)).map(t=>({key:t.key,label:t.label})),
+    ...(_rdPotwashVisible() ? [] : [{key:RD_POTWASH_KEY,label:RD_POTWASH_LABEL}])];
+  if(canEdit && hiddenList.length){
+    rows += `<tr><td colspan="3" style="font-size:12px;color:var(--tx3);background:var(--bg2)">已刪除的預設項目：${hiddenList.map(h=>`<span style="display:inline-flex;align-items:center;gap:4px;margin:2px 8px 2px 0">${escH(h.label)}<button class="btn btn-g" style="font-size:11px;padding:2px 8px" onclick="rdRestoreCleanTask('${h.key}')">↩ 還原</button></span>`).join('')}</td></tr>`;
+  }
+  if(!rows) rows = `<tr><td class="empty-td" colspan="3">📭 目前沒有清潔項目，請按「➕ 新增清潔項目」新增</td></tr>`;
   tbody.innerHTML = rows;
 }
 
@@ -15076,6 +15098,11 @@ function _rdCleanCellHtml(taskKey, period, canEdit){
   </td>`;
 }
 
+// 每個清潔項目（預設與自訂）旁的刪除按鈕，僅幕僚／系統管理員看得到
+function _rdCleanDelBtn(key, canEdit){
+  if(!canEdit) return '';
+  return `<button class="btn btn-g" title="刪除此清潔項目" style="font-size:11px;padding:2px 8px;margin-left:8px;color:var(--red);vertical-align:middle" onclick="rdDeleteCleanTask('${key}')">🗑 刪除</button>`;
+}
 async function rdAddCleaningPerson(taskKey, period, personId){
   if(!_rdCleaningData.tasks) _rdCleaningData.tasks = {};
   if(!_rdCleaningData.tasks[taskKey]) _rdCleaningData.tasks[taskKey] = {};
@@ -15128,11 +15155,7 @@ async function saveCleaningTask(){
   const newTask = { key, label, am, pm, custom:true };
   try{
     const nextTasks = _rdCustomTasks.concat([newTask]);
-    await window._firebaseSetDoc(window._firebaseRosterCleanTasksRef(), {
-      items: nextTasks,
-      updatedAt: new Date().toISOString(),
-      updatedBy: (window._currentUser && window._currentUser.email) || ''
-    }, {merge:false});
+    await _rdSaveCleanMeta(nextTasks, _rdHiddenBuiltins);
     _rdCustomTasks = nextTasks;
     closeOv('cleantask');
     renderRosterDutyCleaning();
@@ -15140,7 +15163,36 @@ async function saveCleaningTask(){
     alert('⚠️ 新增失敗：' + e.message);
   }
 }
-// 刪除一筆自訂新增的清潔項目（內建固定項目不提供刪除入口）；連同其已指派的人員資料一併清除
+// 刪除清潔項目：
+//  ・自訂新增的項目 → 從清單移除，連同當月已指派的人員資料一併清除
+//  ・內建預設項目（含「17點洗花盆」）→ 記錄為已刪除（隱藏），所有月份都不再顯示；表格最下方可一鍵還原，原本的指派資料保留
+async function rdDeleteCleanTask(key){
+  if(!canEditWarReport()) return;
+  const custom = _rdCustomTasks.find(x=>x.key===key);
+  const builtin = RD_CLEAN_TASKS.find(x=>x.key===key) || (key===RD_POTWASH_KEY ? {key, label:RD_POTWASH_LABEL} : null);
+  if(custom) return rdDeleteCustomCleanTask(key);
+  if(!builtin) return;
+  if(!confirm(`確定要刪除清潔項目「${builtin.label}」嗎？\n（這是預設項目，刪除後每個月份都不會再顯示；之後可在表格最下方按「還原」恢復）`)) return;
+  try{
+    const nextHidden = _rdHiddenBuiltins.filter(k=>k!==key).concat([key]);
+    await _rdSaveCleanMeta(_rdCustomTasks, nextHidden);
+    _rdHiddenBuiltins = nextHidden;
+    renderRosterDutyCleaning();
+  }catch(e){
+    alert('⚠️ 刪除失敗：' + e.message);
+  }
+}
+async function rdRestoreCleanTask(key){
+  if(!canEditWarReport()) return;
+  try{
+    const nextHidden = _rdHiddenBuiltins.filter(k=>k!==key);
+    await _rdSaveCleanMeta(_rdCustomTasks, nextHidden);
+    _rdHiddenBuiltins = nextHidden;
+    renderRosterDutyCleaning();
+  }catch(e){
+    alert('⚠️ 還原失敗：' + e.message);
+  }
+}
 async function rdDeleteCustomCleanTask(key){
   if(!canEditWarReport()) return;
   const t = _rdCustomTasks.find(x=>x.key===key);
@@ -15148,11 +15200,7 @@ async function rdDeleteCustomCleanTask(key){
   if(!confirm(`確定要刪除清潔項目「${t.label}」嗎？`)) return;
   try{
     const nextTasks = _rdCustomTasks.filter(x=>x.key!==key);
-    await window._firebaseSetDoc(window._firebaseRosterCleanTasksRef(), {
-      items: nextTasks,
-      updatedAt: new Date().toISOString(),
-      updatedBy: (window._currentUser && window._currentUser.email) || ''
-    }, {merge:false});
+    await _rdSaveCleanMeta(nextTasks, _rdHiddenBuiltins);
     _rdCustomTasks = nextTasks;
     // 一併清掉該項目在當月已指派的人員資料
     if(_rdCleaningData.tasks && _rdCleaningData.tasks[key]){
@@ -15215,7 +15263,7 @@ function _rdPrintTablesHtml(){
     const pmCell = pmList===null ? '—' : (pmList.length ? escH(pmList.join('、')) : '尚未指派');
     return `<tr><td class="td-label">${escH(t.label)}</td><td>${amCell}</td><td>${pmCell}</td></tr>`;
   }).join('');
-  cleaningRows += `<tr><td class="td-label">17點洗花盆(每月一、三週的禮拜一)</td><td>—</td><td class="td-all">全體人員</td></tr>`;
+  if(_rdPotwashVisible()) cleaningRows += `<tr><td class="td-label">${RD_POTWASH_LABEL}</td><td>—</td><td class="td-all">全體人員</td></tr>`;
 
   return { officerRows, cleaningRows };
 }
@@ -17659,7 +17707,7 @@ function spRenderComps() {
       ${sel(i, 'park', ['平面車位', '機械車位', '無車位'])}
       ${inp(i, 'offer', '開價（萬）', 'type="number" step="any"')}
       ${inp(i, 'unit', '單價（萬/坪）', `type="number" step="any" data-u="${i}"`)}
-      ${sel(i, 'status', ['', '預售', '閒置', '自用', '租客'])}
+      ${sel(i, 'status', ['', '預售', '閒置', '空屋', '自用', '租客'])}
     </div>
     <button class="sp-x" title="移除" onclick="spDelComp(${i})">✕</button>
   </div>`).join('');
