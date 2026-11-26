@@ -292,6 +292,7 @@ let tripMapMarkersLayer = null;
           <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
           以 Google 帳號註冊
         </button>
+        <div class="lp-terms-note" style="font-size:11px;color:#9fb0c8;margin-top:10px;line-height:1.7">註冊與登入即代表同意本系統之「<a href="javascript:void(0)" onclick="openTermsModal('privacy')" style="color:#cfe3ff;text-decoration:underline;cursor:pointer">隱私權保護政策</a>」與「<a href="javascript:void(0)" onclick="openTermsModal('consent')" style="color:#cfe3ff;text-decoration:underline;cursor:pointer">個人資料蒐集、處理及利用同意書</a>」</div>
         <div style="font-size:10px;color:#9fb0c8;margin-top:6px;line-height:1.5">首次使用請先點「註冊」提出申請，<br>待系統管理員審核通過後即可登入</div>
         <div id="login-info" style="display:none;margin-top:12px;padding:9px 12px;background:rgba(52,168,83,.15);border:1px solid rgba(52,168,83,.45);border-radius:10px;font-size:11px;color:#9be7ad"></div>
         <div id="login-error" style="display:none;margin-top:14px;padding:9px 12px;background:rgba(192,24,42,.15);border:1px solid rgba(192,24,42,.4);border-radius:10px;font-size:11px;color:#ffaaaa"></div>
@@ -305,11 +306,11 @@ let tripMapMarkersLayer = null;
 
 </div><!-- /#login-screen -->
 
-<div id="privacy-modal" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px">
+<div id="privacy-modal" onclick="if(event.target===this)closeTermsModal('privacy')" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px">
   <div style="background:#fff;border-radius:16px;max-width:600px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="padding:20px 24px 16px;border-bottom:1px solid #e4eaf2;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div style="font-size:16px;font-weight:800;color:#0f519b">🔒 隱私權保護政策</div>
-      <span style="font-size:11px;color:#a0b0c8">請閱讀完畢後同意或拒絕</span>
+      
     </div>
     <div style="padding:20px 24px;overflow-y:auto;font-size:13px;color:#1a2332;line-height:1.8">
       <p style="margin-bottom:14px">非常歡迎您光臨「日勝房屋後台資訊系統」（以下簡稱本網站），為了讓您能夠安心使用本網站的各項服務與資訊，特此向您說明本網站的隱私權保護政策，以保障您的權益，請您詳閱下列內容：</p>
@@ -335,24 +336,17 @@ let tripMapMarkersLayer = null;
         📞 電話：0975711267<br>💬 LINE：dr.song0729
       </div>
     </div>
-    <div style="padding:14px 24px;border-top:1px solid #e4eaf2;flex-shrink:0">
-      <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#5a7090;cursor:pointer;margin-bottom:12px">
-        <input type="checkbox" id="privacy-skip-today" style="width:15px;height:15px;cursor:pointer">
-        今日不再顯示
-      </label>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button onclick="onPrivacyDisagree()" style="padding:9px 20px;background:#f0f4f8;color:#3d526b;border:1px solid #d0dcea;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">❌ 不同意</button>
-        <button onclick="onPrivacyAgree()" style="padding:9px 24px;background:#0f519b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">✅ 同意並繼續</button>
-      </div>
+    <div style="padding:14px 24px;border-top:1px solid #e4eaf2;flex-shrink:0;display:flex;justify-content:flex-end">
+      <button onclick="closeTermsModal('privacy')" style="padding:9px 28px;background:#0f519b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">關閉</button>
     </div>
   </div>
 </div>
 
-<div id="consent-modal" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px">
+<div id="consent-modal" onclick="if(event.target===this)closeTermsModal('consent')" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px">
   <div style="background:#fff;border-radius:16px;max-width:600px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.4);overflow:hidden">
     <div style="padding:20px 24px 16px;border-bottom:1px solid #e4eaf2;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div style="font-size:16px;font-weight:800;color:#0f519b">📋 個人資料蒐集、處理及利用同意書</div>
-      <span style="font-size:11px;color:#a0b0c8">請閱讀完畢後同意或拒絕</span>
+      
     </div>
     <div style="padding:20px 24px;overflow-y:auto;font-size:13px;color:#1a2332;line-height:1.9">
       <p style="margin-bottom:6px"><strong>蒐集主體：</strong>日勝房屋後台資訊系統</p>
@@ -384,15 +378,8 @@ let tripMapMarkersLayer = null;
       <p>本系統保留隨時修訂本同意書之權利，修訂後之條款將公告於登入頁面。使用者於條款修訂後繼續使用本系統，視為已同意修訂後之內容。</p>
       <p style="margin-top:14px;font-size:11px;color:#a0b0c8;text-align:right">最後更新日期：2026年5月25日</p>
     </div>
-    <div style="padding:14px 24px;border-top:1px solid #e4eaf2;flex-shrink:0">
-      <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#5a7090;cursor:pointer;margin-bottom:12px">
-        <input type="checkbox" id="consent-skip-today" style="width:15px;height:15px;cursor:pointer">
-        今日不再顯示
-      </label>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button onclick="onConsentDisagree()" style="padding:9px 20px;background:#f0f4f8;color:#3d526b;border:1px solid #d0dcea;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">❌ 不同意</button>
-        <button onclick="onConsentAgree()" style="padding:9px 24px;background:#0f519b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">✅ 同意並登入</button>
-      </div>
+    <div style="padding:14px 24px;border-top:1px solid #e4eaf2;flex-shrink:0;display:flex;justify-content:flex-end">
+      <button onclick="closeTermsModal('consent')" style="padding:9px 28px;background:#0f519b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">關閉</button>
     </div>
   </div>
 </div>
@@ -9734,21 +9721,21 @@ async function loadFromFirestore(uid){
   }
 }
 
-// ── 條款同意流程 ──
-// localStorage key: 'consent_skip_YYYY-MM-DD' → 'true'
-function _todayKey(){ return 'consent_skip_' + new Date().toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei'}).replace(/\//g,'-'); }
-function _hasSkippedToday(){ try{ return localStorage.getItem(_todayKey()) === 'true'; }catch{ return false; } }
-function _saveSkipToday(type){
-  try{
-    if(document.getElementById(type+'-skip-today')?.checked){
-      localStorage.setItem(_todayKey(), 'true');
-    }
-  }catch{}
+// ── 條款（隱私權保護政策／個資同意書）──
+// 登入與註冊不再先跳出條款視窗：登入頁「以 Google 帳號註冊」按鈕下方註明「註冊與登入即代表同意…」，
+// 兩份條款改為可點的超連結，點了以視窗開啟閱讀（純閱讀，按「關閉」或點背景即關閉）。
+function openTermsModal(type){
+  const m = document.getElementById(type === 'consent' ? 'consent-modal' : 'privacy-modal');
+  if(m) m.style.display = 'flex';
 }
+function closeTermsModal(type){
+  const m = document.getElementById(type === 'consent' ? 'consent-modal' : 'privacy-modal');
+  if(m) m.style.display = 'none';
+}
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape'){ closeTermsModal('privacy'); closeTermsModal('consent'); } });
 
 // 按下登入按鈕後的進入點
 async function handleSignIn(){
-  const btn = document.getElementById('google-signin-btn');
   const errEl = document.getElementById('login-error');
 
   // 等待 Firebase module 初始化完成（最多等 5 秒）
@@ -9761,43 +9748,7 @@ async function handleSignIn(){
     if(errEl){ errEl.style.display='block'; errEl.textContent='系統初始化失敗，請重新整理頁面再試。'; }
     return;
   }
-
-  // 若今日已勾選「不再顯示」，直接進行 Google 登入
-  if(_hasSkippedToday()){
-    _doGoogleSignIn();
-    return;
-  }
-
-  // 否則先顯示隱私權政策
-  _showPrivacyModal();
-}
-
-function _showPrivacyModal(){
-  const m = document.getElementById('privacy-modal');
-  m.style.display = 'flex';
-}
-
-function onPrivacyAgree(){
-  _saveSkipToday('privacy');
-  document.getElementById('privacy-modal').style.display = 'none';
-  // 接著顯示個資同意書
-  document.getElementById('consent-modal').style.display = 'flex';
-}
-
-function onPrivacyDisagree(){
-  document.getElementById('privacy-modal').style.display = 'none';
-  _showConsentError('您未同意隱私權保護政策，無法使用本系統。');
-}
-
-function onConsentAgree(){
-  _saveSkipToday('consent');
-  document.getElementById('consent-modal').style.display = 'none';
   _doGoogleSignIn();
-}
-
-function onConsentDisagree(){
-  document.getElementById('consent-modal').style.display = 'none';
-  _showConsentError('您未同意個人資料蒐集同意條款，無法使用本系統。');
 }
 
 // ── 登入後版本更新內容通知 ──
