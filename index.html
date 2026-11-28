@@ -228,6 +228,9 @@
   window._firebaseRosterCleaningRef = (ym) => doc(db_fs, 'roster_cleaning', ym);
   // 輪值表：清潔分工「自訂新增項目」清單（不分月份，套用到每個月的清潔分工表，與內建固定項目並列）
   window._firebaseRosterCleanTasksRef = () => doc(db_fs, 'roster_cleaning_meta', 'custom_tasks');
+  // 週報表：個人資料底下的 weekly_reports 子集合（文件 id = 該週週一日期 YYYY-MM-DD）
+  window._firebaseWeeklyReportRef   = (uid, wk) => doc(db_fs, 'users', uid, 'weekly_reports', wk);
+  window._firebaseWeeklyReportsColl = (uid) => collection(db_fs, 'users', uid, 'weekly_reports');
 
   // 每次開啟網站：先登出 → 設 session persistence → 再監聽
   signOut(auth)
@@ -686,6 +689,7 @@ let tripMapMarkersLayer = null;
         <button onclick="calPrevMonth()" style="width:30px;height:30px;border:none;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s" onmouseover="this.style.background='rgba(255,255,255,.35)'" onmouseout="this.style.background='rgba(255,255,255,.2)'">‹</button>
         <span id="cal-title" style="font-size:16px;font-weight:700;color:#fff;min-width:120px;text-align:center"></span>
         <button onclick="calNextMonth()" style="width:30px;height:30px;border:none;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s" onmouseover="this.style.background='rgba(255,255,255,.35)'" onmouseout="this.style.background='rgba(255,255,255,.2)'">›</button>
+        <button onclick="switchPage('weeklyreport')" style="padding:5px 12px;border:none;border-radius:var(--r);background:#fff;color:var(--acc);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s;white-space:nowrap" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">📝 週報表</button>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <select id="cal-year-sel" class="fc" style="width:90px;padding:5px 8px!important;font-size:13px!important;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff" onchange="calJumpToSelected()"></select>
@@ -3156,6 +3160,339 @@ render();
   </div>
 </div>
 
+<div class="page" id="page-weeklyreport">
+  <style>
+    #page-weeklyreport .wr-wrap{padding:0 16px 40px;max-width:900px}
+    #page-weeklyreport .wr-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    #page-weeklyreport .wr-weeknav{display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--acc),#1a6bbf);border-radius:12px;padding:8px 10px;color:#fff}
+    #page-weeklyreport .wr-weeknav button{width:30px;height:30px;border:none;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:16px;cursor:pointer}
+    #page-weeklyreport .wr-weeknav button:disabled{opacity:.35;cursor:not-allowed}
+    #page-weeklyreport .wr-weeklabel{font-size:15px;font-weight:800;min-width:190px;text-align:center}
+    #page-weeklyreport .wr-card{background:var(--surf);border:1px solid var(--bdr);border-radius:12px;padding:16px;margin-bottom:14px}
+    #page-weeklyreport .wr-h{font-size:15px;font-weight:800;color:var(--acc);margin-bottom:10px;line-height:1.5}
+    #page-weeklyreport .wr-h small{font-size:12px;font-weight:600;color:var(--tx2)}
+    #page-weeklyreport .wr-line{display:flex;align-items:center;flex-wrap:wrap;gap:6px 6px;font-size:14px;line-height:2}
+    #page-weeklyreport .wr-num{width:74px;padding:5px 8px;font-size:14px;text-align:center}
+    #page-weeklyreport .wr-sub{font-size:13px;font-weight:700;color:var(--tx2);margin:12px 0 6px}
+    #page-weeklyreport textarea.fc{width:100%;box-sizing:border-box;resize:vertical;min-height:110px;font-size:14px;line-height:1.6}
+    #page-weeklyreport .wr-src{display:grid;grid-template-columns:1.8fr repeat(4,1fr) 30px;gap:6px;align-items:center;margin-bottom:6px}
+    #page-weeklyreport .wr-src .fc{padding:6px 8px;font-size:13px}
+    #page-weeklyreport .wr-src-hd{font-size:11px;font-weight:700;color:var(--tx3)}
+    #page-weeklyreport .wr-x{border:none;background:none;color:var(--red);font-size:16px;cursor:pointer}
+    #page-weeklyreport .wr-hint{font-size:12px;color:var(--tx3);margin-top:6px}
+    #page-weeklyreport .wr-warn{color:#c05621}
+    #page-weeklyreport .wr-status{font-size:12px;color:var(--tx3)}
+    #page-weeklyreport .wr-dirty{color:#c05621;font-weight:700}
+    #page-weeklyreport .wr-hist{display:flex;flex-direction:column;gap:6px}
+    #page-weeklyreport .wr-hist-item{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border:1px solid var(--bdr);border-radius:10px;cursor:pointer;background:var(--surf2);font-size:13px}
+    #page-weeklyreport .wr-hist-item:hover{border-color:var(--acc)}
+    #page-weeklyreport .wr-hist-item.cur{border-color:var(--acc);background:var(--accl)}
+    #page-weeklyreport .wr-readonly .fc{background:var(--surf2)!important;color:var(--tx)!important;opacity:1}
+    @media(max-width:640px){
+      #page-weeklyreport .wr-src{grid-template-columns:1fr 1fr;padding:8px;border:1px solid var(--bdr);border-radius:8px}
+      #page-weeklyreport .wr-src .wr-src-name{grid-column:1/-1}
+      #page-weeklyreport .wr-src-hdrow{display:none}
+      #page-weeklyreport .wr-weeklabel{min-width:150px;font-size:14px}
+    }
+  </style>
+  <div class="ph" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between">
+    <div><div class="pt">📝 週報表</div><div class="ps">每週一到週六：本月目標、本週達成與心得、下週目標與預計達成</div></div>
+    <button class="btn btn-g btn-sm" onclick="switchPage('stats')">← 回首頁</button>
+  </div>
+  <div class="wr-wrap">
+    <div class="wr-bar">
+      <div class="wr-weeknav">
+        <button id="wr-prev" onclick="wrGoWeek(-1)" title="上一週">‹</button>
+        <span class="wr-weeklabel" id="wr-weeklabel"></span>
+        <button id="wr-next" onclick="wrGoWeek(1)" title="下一週">›</button>
+      </div>
+      <button class="btn btn-g btn-sm" onclick="wrGoThisWeek()">本週</button>
+      <select id="wr-person" class="fc" style="display:none;width:auto;min-width:150px;padding:6px 8px" onchange="wrChangePerson(this.value)"></select>
+      <span style="flex:1"></span>
+      <span class="wr-status" id="wr-status"></span>
+      <button class="btn btn-p" id="wr-save-btn" onclick="wrSave()">💾 儲存</button>
+    </div>
+
+    <div id="wr-form">
+      <div class="wr-card">
+        <div class="wr-h">（一）本月目標 <small id="wr-month-label"></small></div>
+        <div class="wr-line">委託
+          <input class="fc wr-num" id="wr-m-total" type="number" min="0" step="1" inputmode="numeric" oninput="wrDirty()"> 件
+          （其中專任約 <input class="fc wr-num" id="wr-m-excl" type="number" min="0" step="1" inputmode="numeric" oninput="wrDirty()"> 件、
+          一般約 <input class="fc wr-num" id="wr-m-gen" type="number" min="0" step="1" inputmode="numeric" oninput="wrDirty()"> 件）、
+          業績 <input class="fc wr-num" id="wr-m-rev" type="number" min="0" step="any" inputmode="decimal" oninput="wrDirty()"> 萬
+        </div>
+        <div class="wr-hint" id="wr-m-hint"></div>
+      </div>
+
+      <div class="wr-card">
+        <div class="wr-h">（二）本週 <small id="wr-this-range"></small> 達成與心得</div>
+        <textarea class="fc" id="wr-this" placeholder="本週完成了哪些事（帶看、斡旋、委託、成交…）與心得檢討" oninput="wrDirty()"></textarea>
+      </div>
+
+      <div class="wr-card">
+        <div class="wr-h">（三）下週 <small id="wr-next-range"></small> 目標與預計達成委託和業績</div>
+        <div class="wr-sub">🎯 目標</div>
+        <textarea class="fc" id="wr-next-goal" placeholder="下週要完成的目標與行動計畫" oninput="wrDirty()"></textarea>
+        <div class="wr-sub">📈 預計達成</div>
+        <div class="wr-line">委託
+          <input class="fc wr-num" id="wr-n-total" type="number" min="0" step="1" inputmode="numeric" oninput="wrDirty()"> 件
+          （其中專任約 <input class="fc wr-num" id="wr-n-excl" type="number" min="0" step="1" inputmode="numeric" oninput="wrDirty()"> 件、
+          一般約 <input class="fc wr-num" id="wr-n-gen" type="number" min="0" step="1" inputmode="numeric" oninput="wrDirty()"> 件）、
+          業績 <input class="fc wr-num" id="wr-n-rev" type="number" min="0" step="any" inputmode="decimal" oninput="wrDirty()"> 萬
+        </div>
+        <div class="wr-hint" id="wr-n-hint"></div>
+        <div class="wr-sub">💰 業績來源 <span style="font-weight:500;color:var(--tx3);font-size:12px">（金額單位：萬）</span></div>
+        <div class="wr-src wr-src-hdrow"><span class="wr-src-hd">物件名稱</span><span class="wr-src-hd">開價</span><span class="wr-src-hd">底價</span><span class="wr-src-hd">預計成交價</span><span class="wr-src-hd">業績</span><span></span></div>
+        <div id="wr-sources"></div>
+        <button class="btn btn-g btn-sm" id="wr-add-src" onclick="wrAddSource()">＋ 新增業績來源</button>
+        <div class="wr-hint" id="wr-src-sum"></div>
+      </div>
+    </div>
+
+    <div class="wr-card">
+      <div class="wr-h">📚 歷史週報 <small>點一下即可開啟該週紀錄</small></div>
+      <div class="wr-hist" id="wr-history"><div class="wr-hint">載入中…</div></div>
+    </div>
+  </div>
+</div>
+<script id="weeklyreport-js">
+// ══════════════════════════════════════════════════════════════
+// 週報表：每位使用者每週（週一～週六）一份，存放在 users/{uid}/weekly_reports/{週一日期}
+// （沿用個人資料的安全規則：本人可讀寫；主管以上與唯讀帳號可讀，不需另外部署規則）
+// ══════════════════════════════════════════════════════════════
+const WR_FIRST_WEEK = '2026-11-30';          // 週報表從 2026/11/30（一）～12/5（六）這週開始
+const WR_WD = ['日','一','二','三','四','五','六'];
+let _wrWeek = null;          // 目前顯示的週一日期 'YYYY-MM-DD'
+let _wrUid = null;           // 目前檢視的是誰的週報（預設自己）
+let _wrSources = [];         // 下週業績來源 [{name, list, floor, deal, rev}]
+let _wrDirtyFlag = false;
+let _wrHistory = [];         // 已儲存的週報清單（目前檢視對象）
+let _wrPeopleLoaded = false;
+
+function _wrParse(s){ const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
+function _wrFmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _wrAdd(s, days){ const d = _wrParse(s); d.setDate(d.getDate()+days); return _wrFmt(d); }
+function _wrMonday(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); const wd = x.getDay(); x.setDate(x.getDate() - (wd === 0 ? 6 : wd - 1)); return _wrFmt(x); }
+function _wrMD(s){ const d = _wrParse(s); return `${d.getMonth()+1}/${d.getDate()}(${WR_WD[d.getDay()]})`; }
+function _wrRange(mon){ return `${_wrMD(mon)}～${_wrMD(_wrAdd(mon,5))}`; }
+// 「本月」＝這一週（週一～週六）多數天數所在的月份，以週四所屬月份判斷（例如 11/30～12/5 → 12 月）
+function _wrMonthOf(mon){ const d = _wrParse(_wrAdd(mon,3)); return { ym: d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), label: `${d.getFullYear()}年${d.getMonth()+1}月` }; }
+function _wrMyUid(){ return window._currentUser && window._currentUser.uid; }
+function _wrReadonly(){ return _wrUid !== _wrMyUid(); }
+function _wrRef(uid, wk){ return window._firebaseWeeklyReportRef(uid, wk); }
+function _wrEl(id){ return document.getElementById(id); }
+function _wrNum(id){ const v = (_wrEl(id).value||'').trim(); return v === '' ? null : Number(v); }
+function _wrSetNum(id, v){ _wrEl(id).value = (v === null || v === undefined || v === '') ? '' : v; }
+function _wrCanViewOthers(){ return SUPERVISOR_ROLES.includes(window._myRole) || window._myRole === ROLES.VIEWER; }
+
+async function initWeeklyReportPage(){
+  if(!_wrMyUid()) return;
+  if(!_wrUid) _wrUid = _wrMyUid();
+  if(!_wrWeek){
+    const cur = _wrMonday(new Date());
+    _wrWeek = cur < WR_FIRST_WEEK ? WR_FIRST_WEEK : cur;
+  }
+  if(_wrCanViewOthers() && !_wrPeopleLoaded) _wrLoadPeople();
+  await _wrLoadWeek();
+  _wrLoadHistory();
+}
+// 主管／唯讀帳號：可切換檢視其他人的週報（唯讀）
+async function _wrLoadPeople(){
+  const sel = _wrEl('wr-person'); if(!sel) return;
+  try{
+    const snap = await window._firebaseGetDocs(window._firebaseIndexColl());
+    const people = [];
+    snap.forEach(d=>{ if(d.id.startsWith('__')) return; const x = d.data()||{}; people.push({ uid:d.id, name: x.customName || x.name || (x.email||'').split('@')[0] || d.id }); });
+    people.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+    const me = _wrMyUid();
+    sel.innerHTML = `<option value="${escAttr(me)}">👤 我的週報</option>` + people.filter(p=>p.uid!==me).map(p=>`<option value="${escAttr(p.uid)}">${escH(p.name)} 的週報</option>`).join('');
+    sel.value = _wrUid; sel.style.display = '';
+    _wrPeopleLoaded = true;
+  }catch(e){ console.warn('週報表：讀取人員清單失敗', e); }
+}
+async function wrChangePerson(uid){
+  if(_wrDirtyFlag && !_wrReadonly() && !(await _wrConfirmLeave())){ _wrEl('wr-person').value = _wrUid; return; }
+  _wrUid = uid; _wrDirtyFlag = false;
+  await _wrLoadWeek(); _wrLoadHistory();
+}
+// 切換週次前，若有未儲存的修改：可選擇先儲存
+async function _wrConfirmLeave(){
+  if(!_wrDirtyFlag || _wrReadonly()) return true;
+  if(confirm('這一週的週報還沒儲存，要先儲存嗎？\n（按「確定」儲存後切換；按「取消」則不儲存，直接放棄修改）')) return await wrSave();
+  return true;
+}
+async function wrGoWeek(step){
+  const target = _wrAdd(_wrWeek, step*7);
+  if(target < WR_FIRST_WEEK) return;
+  if(!(await _wrConfirmLeave())) return;
+  _wrWeek = target; await _wrLoadWeek();
+}
+async function wrGoThisWeek(){
+  const cur = _wrMonday(new Date());
+  const target = cur < WR_FIRST_WEEK ? WR_FIRST_WEEK : cur;
+  if(target === _wrWeek) return;
+  if(!(await _wrConfirmLeave())) return;
+  _wrWeek = target; await _wrLoadWeek();
+}
+async function wrOpenWeek(wk){
+  if(wk === _wrWeek) return;
+  if(!(await _wrConfirmLeave())) return;
+  _wrWeek = wk; await _wrLoadWeek();
+  const top = _wrEl('page-weeklyreport'); if(top) top.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function _wrRenderHeader(){
+  _wrEl('wr-weeklabel').textContent = _wrRange(_wrWeek);
+  _wrEl('wr-prev').disabled = _wrWeek <= WR_FIRST_WEEK;
+  const mo = _wrMonthOf(_wrWeek);
+  _wrEl('wr-month-label').textContent = `（${mo.label}）`;
+  _wrEl('wr-this-range').textContent = `（${_wrRange(_wrWeek)}）`;
+  _wrEl('wr-next-range').textContent = `（${_wrRange(_wrAdd(_wrWeek,7))}）`;
+  const ro = _wrReadonly();
+  _wrEl('wr-form').classList.toggle('wr-readonly', ro);
+  _wrEl('wr-form').querySelectorAll('input,textarea').forEach(e=>{ e.readOnly = ro; });
+  _wrEl('wr-save-btn').style.display = ro ? 'none' : '';
+  _wrEl('wr-add-src').style.display = ro ? 'none' : '';
+}
+function _wrFill(d){
+  d = d || {};
+  const m = d.monthTarget || {}, n = d.nextPlan || {};
+  _wrSetNum('wr-m-total', m.total); _wrSetNum('wr-m-excl', m.exclusive); _wrSetNum('wr-m-gen', m.general); _wrSetNum('wr-m-rev', m.revenue);
+  _wrEl('wr-this').value = d.thisWeek || '';
+  _wrEl('wr-next-goal').value = d.nextGoal || '';
+  _wrSetNum('wr-n-total', n.total); _wrSetNum('wr-n-excl', n.exclusive); _wrSetNum('wr-n-gen', n.general); _wrSetNum('wr-n-rev', n.revenue);
+  _wrSources = Array.isArray(n.sources) ? n.sources.map(s=>({ name:s.name||'', list:s.list??'', floor:s.floor??'', deal:s.deal??'', rev:s.rev??'' })) : [];
+  wrRenderSources();
+}
+async function _wrLoadWeek(){
+  _wrRenderHeader();
+  const st = _wrEl('wr-status'); st.textContent = '⏳ 載入中…'; st.className = 'wr-status';
+  _wrFill({});
+  try{
+    const snap = await window._firebaseGetDoc(_wrRef(_wrUid, _wrWeek));
+    if(snap.exists()){
+      const d = snap.data();
+      _wrFill(d);
+      st.textContent = d.updatedAt ? `已儲存：${new Date(d.updatedAt).toLocaleString('zh-TW',{hour12:false})}` : '已儲存';
+    }else{
+      // 新的一週：本月目標沿用同一個月份最近一份週報填寫的數字（仍可修改）
+      const prev = !_wrReadonly() ? await _wrFindPrevSameMonth() : null;
+      if(prev && prev.monthTarget) _wrFill({ monthTarget: prev.monthTarget });
+      st.textContent = _wrReadonly() ? '📭 這一週尚未填寫' : (prev && prev.monthTarget ? '尚未儲存（本月目標已帶入上一週的數字）' : '尚未儲存');
+    }
+  }catch(e){
+    console.error(e); st.textContent = '⚠️ 載入失敗：' + e.message;
+  }
+  _wrDirtyFlag = false;
+  _wrUpdateHints();
+  _wrRenderHistoryList();
+}
+async function _wrFindPrevSameMonth(){
+  const ym = _wrMonthOf(_wrWeek).ym;
+  for(let i=1;i<=5;i++){
+    const wk = _wrAdd(_wrWeek, -7*i);
+    if(wk < WR_FIRST_WEEK || _wrMonthOf(wk).ym !== ym) break;
+    const h = _wrHistory.find(x=>x.weekStart===wk);
+    if(h) return h;
+    try{ const s = await window._firebaseGetDoc(_wrRef(_wrUid, wk)); if(s.exists()) return s.data(); }catch(e){ break; }
+  }
+  return null;
+}
+
+// ── 下週業績來源 ──
+function wrRenderSources(){
+  const box = _wrEl('wr-sources'); if(!box) return;
+  const ro = _wrReadonly();
+  const inp = (i,k,ph,type) => `<input class="fc${k==='name'?' wr-src-name':''}" ${type==='n'?'type="number" min="0" step="any" inputmode="decimal"':''} placeholder="${ph}" value="${escAttr(_wrSources[i][k] ?? '')}" ${ro?'readonly':''} oninput="wrSrcSet(${i},'${k}',this.value)">`;
+  box.innerHTML = _wrSources.length ? _wrSources.map((s,i)=>`<div class="wr-src">
+      ${inp(i,'name','物件名稱，例：美術館景觀宅')}${inp(i,'list','開價','n')}${inp(i,'floor','底價','n')}${inp(i,'deal','預計成交價','n')}${inp(i,'rev','業績','n')}
+      ${ro?'<span></span>':`<button class="wr-x" title="刪除" onclick="wrDelSource(${i})">✕</button>`}
+    </div>`).join('') : `<div class="wr-hint" style="margin:0 0 8px">${ro?'（未填寫業績來源）':'尚未新增業績來源'}</div>`;
+  _wrUpdateHints();
+}
+function wrAddSource(){ if(_wrReadonly()) return; _wrSources.push({name:'',list:'',floor:'',deal:'',rev:''}); wrRenderSources(); wrDirty(); const all = document.querySelectorAll('#wr-sources .wr-src-name'); if(all.length) all[all.length-1].focus(); }
+function wrDelSource(i){ if(_wrReadonly()) return; _wrSources.splice(i,1); wrRenderSources(); wrDirty(); }
+function wrSrcSet(i,k,v){ if(_wrSources[i]){ _wrSources[i][k] = v; wrDirty(); } }
+
+function wrDirty(){
+  if(_wrReadonly()) return;
+  _wrDirtyFlag = true;
+  const st = _wrEl('wr-status'); st.textContent = '● 尚未儲存的修改'; st.className = 'wr-status wr-dirty';
+  _wrUpdateHints();
+}
+// 小提示：專任＋一般 與 總件數不一致、業績來源合計
+function _wrUpdateHints(){
+  const chk = (t,e,g) => { const T=_wrNum(t), E=_wrNum(e), G=_wrNum(g); return (T!==null && (E!==null||G!==null) && (E||0)+(G||0)!==T) ? `<span class="wr-warn">⚠️ 專任 ${E||0} 件＋一般 ${G||0} 件＝${(E||0)+(G||0)} 件，與委託 ${T} 件不一致</span>` : ''; };
+  _wrEl('wr-m-hint').innerHTML = chk('wr-m-total','wr-m-excl','wr-m-gen');
+  _wrEl('wr-n-hint').innerHTML = chk('wr-n-total','wr-n-excl','wr-n-gen');
+  const sum = _wrSources.reduce((a,s)=>a+(Number(s.rev)||0),0);
+  const nRev = _wrNum('wr-n-rev');
+  _wrEl('wr-src-sum').innerHTML = _wrSources.length ? `業績來源合計 <b>${+sum.toFixed(2)}</b> 萬` + (nRev!==null && Math.abs(nRev-sum)>0.001 ? `<span class="wr-warn">（與預計業績 ${nRev} 萬不同）</span>` : '') : '';
+}
+
+async function wrSave(){
+  if(_wrReadonly()) return false;
+  const uid = _wrMyUid(); if(!uid){ alert('請先登入'); return false; }
+  const btn = _wrEl('wr-save-btn'), st = _wrEl('wr-status');
+  const n = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
+  const payload = {
+    weekStart: _wrWeek, weekEnd: _wrAdd(_wrWeek,5), month: _wrMonthOf(_wrWeek).ym,
+    monthTarget: { total:_wrNum('wr-m-total'), exclusive:_wrNum('wr-m-excl'), general:_wrNum('wr-m-gen'), revenue:_wrNum('wr-m-rev') },
+    thisWeek: _wrEl('wr-this').value,
+    nextGoal: _wrEl('wr-next-goal').value,
+    nextPlan: { total:_wrNum('wr-n-total'), exclusive:_wrNum('wr-n-excl'), general:_wrNum('wr-n-gen'), revenue:_wrNum('wr-n-rev'),
+      sources: _wrSources.filter(s=>String(s.name||'').trim() || [s.list,s.floor,s.deal,s.rev].some(v=>v!==''&&v!==null))
+        .map(s=>({ name:String(s.name||'').trim(), list:n(s.list), floor:n(s.floor), deal:n(s.deal), rev:n(s.rev) })) },
+    ownerName: window._myCustomName || window._myGoogleName || '',
+    updatedAt: new Date().toISOString()
+  };
+  btn.disabled = true; st.textContent = '⏳ 儲存中…'; st.className = 'wr-status';
+  try{
+    await window._firebaseSetDoc(_wrRef(uid, _wrWeek), payload);
+    _wrDirtyFlag = false;
+    st.textContent = `✅ 已儲存：${new Date(payload.updatedAt).toLocaleString('zh-TW',{hour12:false})}`;
+    const i = _wrHistory.findIndex(x=>x.weekStart===_wrWeek);
+    if(i>=0) _wrHistory[i] = payload; else _wrHistory.push(payload);
+    _wrRenderHistoryList();
+    return true;
+  }catch(e){
+    console.error(e); st.textContent = '⚠️ 儲存失敗'; st.className = 'wr-status wr-dirty';
+    alert('⚠️ 週報儲存失敗：' + e.message);
+    return false;
+  }finally{ btn.disabled = false; }
+}
+
+// ── 歷史週報 ──
+async function _wrLoadHistory(){
+  const uid = _wrUid;
+  try{
+    const snap = await window._firebaseGetDocs(window._firebaseWeeklyReportsColl(uid));
+    if(uid !== _wrUid) return;
+    _wrHistory = [];
+    snap.forEach(d=>{ const x = d.data()||{}; _wrHistory.push(Object.assign({ weekStart: d.id }, x)); });
+  }catch(e){ console.warn('週報表：讀取歷史紀錄失敗', e); _wrHistory = []; }
+  _wrRenderHistoryList();
+}
+function _wrRenderHistoryList(){
+  const box = _wrEl('wr-history'); if(!box) return;
+  const list = _wrHistory.slice().sort((a,b)=>b.weekStart.localeCompare(a.weekStart));
+  if(!list.length){ box.innerHTML = '<div class="wr-hint">目前還沒有已儲存的週報</div>'; return; }
+  const f = v => (v === null || v === undefined || v === '') ? '－' : v;
+  box.innerHTML = list.map(h=>{
+    const m = h.monthTarget||{}, n = h.nextPlan||{};
+    return `<div class="wr-hist-item${h.weekStart===_wrWeek?' cur':''}" onclick="wrOpenWeek('${escAttr(h.weekStart)}')">
+      <span style="font-weight:700">📅 ${escH(_wrRange(h.weekStart))}</span>
+      <span style="color:var(--tx2);font-size:12px">本月目標 委託 ${f(m.total)} 件／業績 ${f(m.revenue)} 萬　·　下週預計 委託 ${f(n.total)} 件／業績 ${f(n.revenue)} 萬</span>
+    </div>`;
+  }).join('');
+}
+// 離開網頁時若有未儲存的週報，跳出瀏覽器的提醒
+window.addEventListener('beforeunload', e=>{ if(_wrDirtyFlag && typeof currentPage !== 'undefined' && currentPage === 'weeklyreport'){ e.preventDefault(); e.returnValue = ''; } });
+// Ctrl／⌘＋S 快速儲存
+document.addEventListener('keydown', e=>{ if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s' && typeof currentPage !== 'undefined' && currentPage === 'weeklyreport'){ e.preventDefault(); wrSave(); } });
+</script>
+
 <div class="page" id="page-staffdirectory">
   <div class="ph" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between">
     <div style="font-size:12px;color:var(--tx3);line-height:1.6">💡 員工總表資料獨立管理，不再與「每日戰報」業務名冊連動；點擊欄位標題可依該欄位排序。</div>
@@ -4783,8 +5120,13 @@ function toggleFilter(pool){
   btn.textContent=open?'⚙ 收起篩選':'⚙ 進階篩選';
 }
 
-const PAGE_TITLES={'recruit':'募集線','track':'追蹤線','commission':'委託管理','stats':'首頁','trip':'行程規劃','closed':'已結案','admin':'管理後台','buyer':'買方管理','inventory':'公司庫存','taxcalc':'稅務與貸款試算','profile':'個人頁面','warreport':'每日戰報','dutyroster':'每月出勤排休表','rosterduty':'輪值表','staffdirectory':'員工總表','deedreceipt':'契據領用','newproj':'新建案估價試算','salesplan':'銷售企劃書'};
+const PAGE_TITLES={'recruit':'募集線','track':'追蹤線','commission':'委託管理','stats':'首頁','trip':'行程規劃','closed':'已結案','admin':'管理後台','buyer':'買方管理','inventory':'公司庫存','taxcalc':'稅務與貸款試算','profile':'個人頁面','warreport':'每日戰報','dutyroster':'每月出勤排休表','rosterduty':'輪值表','staffdirectory':'員工總表','deedreceipt':'契據領用','newproj':'新建案估價試算','salesplan':'銷售企劃書','weeklyreport':'週報表'};
 function switchPage(p){
+  // 週報表有尚未儲存的修改時，離開前先確認，避免辛苦打的內容遺失
+  if(typeof currentPage!=='undefined' && currentPage==='weeklyreport' && p!=='weeklyreport' && typeof _wrDirtyFlag!=='undefined' && _wrDirtyFlag){
+    if(!confirm('週報表還有尚未儲存的修改，確定要離開嗎？（未儲存的內容會遺失）')) return;
+    _wrDirtyFlag = false;
+  }
   currentPage=p;
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
@@ -4807,6 +5149,7 @@ function switchPage(p){
   else if(p==='staffdirectory'){initStaffDirectoryPage();}
   else if(p==='deedreceipt'){initDeedReceiptPage();}
   else if(p==='salesplan'){initSalesPlanPage();}
+  else if(p==='weeklyreport'){initWeeklyReportPage();}
   if(p==='commission') _updateEndedBadge();
   else renderAll();
 }
